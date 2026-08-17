@@ -1,0 +1,12 @@
+{
+  "name": "my-engine",
+  "version": "0.1.0",
+  "description": "Modern Game Engine in C++23, Vulkan 1.3, SDL3",
+  "dependencies": [
+    {
+      "name": "sdl3",
+      "features": ["vulkan"]
+    },
+    "vulkan-headers"
+  ]
+}
