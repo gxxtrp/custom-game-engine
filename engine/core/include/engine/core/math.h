@@ -66,6 +66,8 @@ struct Vec2 {
         float len = length();
         return len > EPSILON ? (*this / len) : Vec2(0.0f);
     }
+    ENGINE_FORCE_INLINE bool operator==(const Vec2& rhs) const { return is_nearly_equal(x, rhs.x) && is_nearly_equal(y, rhs.y); }
+    ENGINE_FORCE_INLINE bool operator!=(const Vec2& rhs) const { return !(*this == rhs); }
 };
 
 // Vector 3
@@ -93,6 +95,11 @@ struct Vec3 {
     ENGINE_FORCE_INLINE Vec3& operator-=(const Vec3& rhs) { x -= rhs.x; y -= rhs.y; z -= rhs.z; return *this; }
     ENGINE_FORCE_INLINE Vec3& operator*=(float scalar) { x *= scalar; y *= scalar; z *= scalar; return *this; }
     ENGINE_FORCE_INLINE Vec3& operator/=(float scalar) { float inv = 1.0f / scalar; x *= inv; y *= inv; z *= inv; return *this; }
+
+    ENGINE_FORCE_INLINE bool operator==(const Vec3& rhs) const { 
+        return is_nearly_equal(x, rhs.x) && is_nearly_equal(y, rhs.y) && is_nearly_equal(z, rhs.z); 
+    }
+    ENGINE_FORCE_INLINE bool operator!=(const Vec3& rhs) const { return !(*this == rhs); }
 
     ENGINE_FORCE_INLINE float dot(const Vec3& rhs) const { return x * rhs.x + y * rhs.y + z * rhs.z; }
     ENGINE_FORCE_INLINE Vec3 cross(const Vec3& rhs) const {

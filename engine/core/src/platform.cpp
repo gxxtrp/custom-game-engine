@@ -291,7 +291,7 @@ void FrameTimer::tick() {
 
 // FileSystem
 bool FileSystem::read_file_string(const std::string& path, std::string& out_content) {
-    std::ifstream file(path, std::ios::in | std::ios::ate);
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
     if (!file.is_open()) return false;
 
     std::streamsize size = file.tellg();
@@ -299,6 +299,7 @@ bool FileSystem::read_file_string(const std::string& path, std::string& out_cont
 
     out_content.resize(static_cast<size_t>(size));
     if (!file.read(out_content.data(), size)) {
+        out_content.clear();
         return false;
     }
     return true;

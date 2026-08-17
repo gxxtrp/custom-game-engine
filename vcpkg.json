@@ -7,6 +7,9 @@
       "name": "sdl3",
       "features": ["vulkan"]
     },
-    "vulkan-headers"
+    "vulkan-headers",
+    "vulkan-memory-allocator",
+    "cgltf",
+    "tomlplusplus"
   ]
 }
