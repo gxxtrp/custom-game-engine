@@ -10,6 +10,10 @@ add_library(engine_renderer STATIC
     include/engine/renderer/volumetrics.h
     include/engine/renderer/oit.h
     include/engine/renderer/restir.h
+    include/engine/renderer/post_process.h
+    include/engine/renderer/taa.h
+    include/engine/renderer/bloom.h
+    include/engine/renderer/auto_exposure.h
     src/render_pass.cpp
     src/render_graph.cpp
     src/mesh.cpp
@@ -20,6 +24,10 @@ add_library(engine_renderer STATIC
     src/volumetrics.cpp
     src/oit.cpp
     src/restir.cpp
+    src/post_process.cpp
+    src/taa.cpp
+    src/bloom.cpp
+    src/auto_exposure.cpp
 )
 
 target_include_directories(engine_renderer PUBLIC

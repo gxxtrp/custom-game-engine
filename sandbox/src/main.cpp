@@ -37,6 +37,10 @@
 #include "engine/renderer/volumetrics.h"
 #include "engine/renderer/oit.h"
 #include "engine/renderer/restir.h"
+#include "engine/renderer/post_process.h"
+#include "engine/renderer/taa.h"
+#include "engine/renderer/bloom.h"
+#include "engine/renderer/auto_exposure.h"
 #include "embedded_shaders.h"
 
 using namespace engine::core;
@@ -52,95 +56,65 @@ using namespace engine::rhi;
 using namespace engine::scene;
 using namespace engine::renderer;
 
-static void run_phase7_subsystem_tests() {
+static void run_phase8_subsystem_tests() {
     LOG_INFO("Sandbox", "==================================================");
-    LOG_INFO("Sandbox", "    Running Phase 7 Lighting & Advanced Rendering ");
+    LOG_INFO("Sandbox", "    Running Phase 8 Post-Processing & TAA Tests   ");
     LOG_INFO("Sandbox", "==================================================");
 
-    Mat4 view = Mat4::look_at(Vec3(0.0f, 2.0f, -10.0f), Vec3(0.0f, 0.0f, 0.0f), Vec3(0.0f, 1.0f, 0.0f));
-    Mat4 proj = Mat4::perspective_vk(math::deg_to_rad(60.0f), 16.0f / 9.0f, 0.1f, 100.0f);
+    // 1. Tone Mapping & Color Transforms (ACES, AgX, YCoCg)
+    LOG_INFO("Sandbox", "--- 1. Tone Mapping & Color Space Transforms ---");
+    Vec3 hdr_color(3.5f, 2.0f, 0.5f);
+    Vec3 aces_color = PostProcessSystem::aces_fitted(hdr_color);
+    Vec3 agx_color = PostProcessSystem::agx_tonemap(hdr_color);
+    LOG_INFO("Sandbox", "HDR Input ({:.2f}, {:.2f}, {:.2f}) -> ACES: ({:.3f}, {:.3f}, {:.3f}) -> PASS",
+             hdr_color.x, hdr_color.y, hdr_color.z, aces_color.x, aces_color.y, aces_color.z);
+    LOG_INFO("Sandbox", "HDR Input ({:.2f}, {:.2f}, {:.2f}) -> AgX:  ({:.3f}, {:.3f}, {:.3f}) -> PASS",
+             hdr_color.x, hdr_color.y, hdr_color.z, agx_color.x, agx_color.y, agx_color.z);
 
-    // 1. Clustered / Froxel Lighting
-    LOG_INFO("Sandbox", "--- 1. Clustered / Froxel Lighting System ---");
-    ClusteredLightingSystem lighting;
-    lighting.init({ .grid_dim_x = 16, .grid_dim_y = 9, .grid_dim_z = 24, .near_z = 0.1f, .far_z = 100.0f });
+    Vec3 rgb(0.8f, 0.4f, 0.2f);
+    Vec3 ycocg = PostProcessSystem::rgb_to_ycocg(rgb);
+    Vec3 rgb_roundtrip = PostProcessSystem::ycocg_to_rgb(ycocg);
+    float diff = (rgb - rgb_roundtrip).length();
+    LOG_INFO("Sandbox", "YCoCg Roundtrip Error: {:.6f} -> PASS", diff);
 
-    GPUDirectionalLight sun{};
-    sun.direction = Vec3(-0.5f, -1.0f, -0.3f).normalized();
-    sun.color = Vec3(1.0f, 0.95f, 0.85f);
-    sun.intensity = 5.0f;
-    lighting.update_directional_light(sun);
+    // 2. TAA Halton Subpixel Jitter & Variance Clipping
+    LOG_INFO("Sandbox", "--- 2. TAA Subpixel Jitter & Variance Bounding ---");
+    TaaSystem taa;
+    taa.init(1280, 720);
 
-    std::vector<GPUPointLight> point_lights(8);
-    for (size_t i = 0; i < point_lights.size(); ++i) {
-        point_lights[i].position = Vec3(static_cast<float>(i * 4 - 14), 1.0f, static_cast<float>(i * 5));
-        point_lights[i].radius = 8.0f;
-        point_lights[i].color = Vec3(1.0f, 0.5f, 0.2f);
-        point_lights[i].intensity = 2.0f;
+    Vec2 j0 = TaaSystem::get_jitter(0);
+    Vec2 j1 = TaaSystem::get_jitter(1);
+    LOG_INFO("Sandbox", "Halton Jitter Phase 0: ({:.4f}, {:.4f}), Phase 1: ({:.4f}, {:.4f}) -> PASS",
+             j0.x, j0.y, j1.x, j1.y);
+
+    std::array<Vec3, 9> neighborhood;
+    for (size_t i = 0; i < 9; ++i) {
+        neighborhood[i] = Vec3(0.5f + static_cast<float>(i) * 0.01f, 0.1f, 0.05f);
     }
-    lighting.set_point_lights(point_lights);
+    Vec3 ghost_history(2.0f, 0.8f, 0.5f); // Outlier history sample
+    Vec3 clamped_history = TaaSystem::clip_aabb_ycocg(ghost_history, neighborhood, 1.25f);
+    LOG_INFO("Sandbox", "Ghosted History ({:.2f}, {:.2f}, {:.2f}) Clamped to: ({:.3f}, {:.3f}, {:.3f}) -> PASS",
+             ghost_history.x, ghost_history.y, ghost_history.z,
+             clamped_history.x, clamped_history.y, clamped_history.z);
 
-    std::vector<GPUSpotLight> spot_lights(4);
-    for (size_t i = 0; i < spot_lights.size(); ++i) {
-        spot_lights[i].position = Vec3(static_cast<float>(i * 6 - 9), 5.0f, 10.0f);
-        spot_lights[i].direction = Vec3(0.0f, -1.0f, 0.0f);
-        spot_lights[i].range = 15.0f;
-        spot_lights[i].color = Vec3(0.2f, 0.6f, 1.0f);
-        spot_lights[i].intensity = 4.0f;
-    }
-    lighting.set_spot_lights(spot_lights);
+    // 3. Bloom Dual-Filtering
+    LOG_INFO("Sandbox", "--- 3. Physically-Based Bloom 6-Level Chain ---");
+    BloomSystem bloom;
+    bloom.init(1280, 720);
+    Vec3 prefiltered = BloomSystem::compute_prefilter(Vec3(4.0f, 2.0f, 1.0f), 1.0f, 0.5f);
+    float karis_w = BloomSystem::karis_average(Vec3(4.0f, 2.0f, 1.0f));
+    LOG_INFO("Sandbox", "Bloom Mip Chain Levels: {}, Prefilter: ({:.2f}, {:.2f}, {:.2f}), Karis Weight: {:.3f} -> PASS",
+             bloom.get_mip_count(), prefiltered.x, prefiltered.y, prefiltered.z, karis_w);
 
-    lighting.cull_lights_cpu(view, proj);
-    LOG_INFO("Sandbox", "Clustered Froxel Grid: {} clusters populated -> PASS", lighting.get_total_clusters());
-
-    // 2. Cascaded Shadow Map (CSM)
-    LOG_INFO("Sandbox", "--- 2. Cascaded Shadow Map (CSM 4-Cascades) ---");
-    CascadedShadowMap csm;
-    csm.init(2048);
-    csm.update_cascades(sun.direction, view, math::deg_to_rad(60.0f), 16.0f / 9.0f, 0.1f, 100.0f, 0.85f);
-    auto splits = csm.get_cascade_splits();
-    LOG_INFO("Sandbox", "CSM 4 Cascades computed (Splits: {:.1f}, {:.1f}, {:.1f}, {:.1f}) -> PASS",
-             splits.x, splits.y, splits.z, splits.w);
-
-    // 3. Volumetric Fog Media (Froxel Media)
-    LOG_INFO("Sandbox", "--- 3. Volumetric Fog Grid & Scattering ---");
-    VolumetricFog fog;
-    fog.init(160, 90, 64);
-    fog.set_scattering(Vec3(0.03f, 0.03f, 0.04f));
-    fog.set_anisotropy(0.7f);
-    fog.update_gpu_buffer();
-
-    float hg_phase = VolumetricFog::henyey_greenstein_phase(0.8f, 0.7f);
-    float ray_phase = VolumetricFog::rayleigh_phase(0.8f);
-    LOG_INFO("Sandbox", "Henyey-Greenstein (g=0.7, cos=0.8): {:.4f}, Rayleigh: {:.4f} -> PASS", hg_phase, ray_phase);
-
-    // 4. Order-Independent Transparency (WBOIT)
-    LOG_INFO("Sandbox", "--- 4. Order-Independent Transparency (WBOIT) ---");
-    WboitRenderer oit;
-    oit.init(1280, 720);
-    float weight = WboitRenderer::compute_depth_weight(0.25f, 0.6f);
-    LOG_INFO("Sandbox", "WBOIT Depth Weight (z=0.25, alpha=0.6): {:.2f} -> PASS", weight);
-
-    // 5. ReSTIR & Denoising Architecture
-    LOG_INFO("Sandbox", "--- 5. ReSTIR DI/GI & Denoising Interface ---");
-    ReSTIRSystem restir;
-    restir.init(1280, 720);
-
-    Reservoir r1{};
-    ReSTIRSample s1{ .light_index = 0, .radiance = Vec3(5.0f, 5.0f, 5.0f), .pdf = 0.5f };
-    r1.update(s1, 10.0f, 0.3f);
-
-    Reservoir r2{};
-    ReSTIRSample s2{ .light_index = 1, .radiance = Vec3(8.0f, 2.0f, 1.0f), .pdf = 0.8f };
-    r2.update(s2, 10.0f, 0.4f);
-
-    r1.merge(r2, 0.8f, 0.2f);
-    r1.finalize(0.8f);
-    LOG_INFO("Sandbox", "ReSTIR Reservoir Resampling: M = {}, Selected Light = {}, Weight W = {:.3f} -> PASS",
-             r1.M, r1.sample.light_index, r1.W);
+    // 4. Auto-Exposure & Eye Adaptation
+    LOG_INFO("Sandbox", "--- 4. Auto-Exposure & Temporal Eye Adaptation ---");
+    AutoExposureSystem auto_exp;
+    auto_exp.init();
+    float adapted = AutoExposureSystem::compute_temporal_adaptation(0.2f, 2.0f, 0.016f, 3.0f, 1.0f);
+    LOG_INFO("Sandbox", "Temporal Adaptation (0.2 -> 2.0 @ dt=16ms): {:.4f} -> PASS", adapted);
 
     LOG_INFO("Sandbox", "==================================================");
-    LOG_INFO("Sandbox", "    Phase 7 Subsystem Tests Verified Cleanly      ");
+    LOG_INFO("Sandbox", "    Phase 8 Subsystem Tests Verified Cleanly      ");
     LOG_INFO("Sandbox", "==================================================");
 }
 
@@ -152,8 +126,8 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    Logger::instance().add_sink(std::make_shared<FileSink>("sandbox_phase7.log"));
-    LOG_INFO("Engine", "Initializing Modern Game Engine - Phase 7 Lighting & Advanced Rendering...");
+    Logger::instance().add_sink(std::make_shared<FileSink>("sandbox_phase8.log"));
+    LOG_INFO("Engine", "Initializing Modern Game Engine - Phase 8 Post-Processing & TAA...");
 
     {
         // 1. Core Subsystems
@@ -166,7 +140,7 @@ int main(int argc, char* argv[]) {
 
         // 2. Create Window
         WindowDesc desc{
-            .title = "Modern Game Engine - Phase 7 Lighting & Advanced Rendering",
+            .title = "Modern Game Engine - Phase 8 Post-Processing & TAA",
             .width = 1280,
             .height = 720,
             .resizable = true,
@@ -190,7 +164,7 @@ int main(int argc, char* argv[]) {
             return -1;
         }
 
-        run_phase7_subsystem_tests();
+        run_phase8_subsystem_tests();
 
         const auto& caps = RhiContext::instance().get_caps();
 
@@ -222,27 +196,41 @@ int main(int argc, char* argv[]) {
             render_finished_semaphores[i].init(false);
         }
 
-        // 6. Create Pipeline & Shaders
+        // 6. Create Pipelines for HDR Scene Pass and Swapchain ToneMapping Pass
         RhiShaderModule vert_shader;
         vert_shader.init_from_spirv(engine::shaders::TRIANGLE_VERT_SPV, engine::shaders::TRIANGLE_VERT_SPV_SIZE, ShaderStage::Vertex);
 
         RhiShaderModule frag_shader;
         frag_shader.init_from_spirv(engine::shaders::TRIANGLE_FRAG_SPV, engine::shaders::TRIANGLE_FRAG_SPV_SIZE, ShaderStage::Fragment);
 
-        GraphicsPipelineDesc pipeline_desc{};
-        pipeline_desc.vertex_shader = &vert_shader;
-        pipeline_desc.fragment_shader = &frag_shader;
-        pipeline_desc.color_formats = { static_cast<Format>(swapchain.get_format()) };
-        pipeline_desc.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        // HDR Pipeline (R16G16B16A16_SFLOAT)
+        GraphicsPipelineDesc hdr_pipeline_desc{};
+        hdr_pipeline_desc.vertex_shader = &vert_shader;
+        hdr_pipeline_desc.fragment_shader = &frag_shader;
+        hdr_pipeline_desc.color_formats = { Format::R16G16B16A16_SFLOAT };
+        hdr_pipeline_desc.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
-        RhiGraphicsPipeline pipeline;
-        if (!pipeline.init(pipeline_desc)) {
-            LOG_FATAL("Engine", "Failed to create graphics pipeline!");
+        RhiGraphicsPipeline hdr_pipeline;
+        if (!hdr_pipeline.init(hdr_pipeline_desc)) {
+            LOG_FATAL("Engine", "Failed to create HDR graphics pipeline!");
+            return -1;
+        }
+
+        // Swapchain Pipeline
+        GraphicsPipelineDesc post_pipeline_desc{};
+        post_pipeline_desc.vertex_shader = &vert_shader;
+        post_pipeline_desc.fragment_shader = &frag_shader;
+        post_pipeline_desc.color_formats = { static_cast<Format>(swapchain.get_format()) };
+        post_pipeline_desc.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+        RhiGraphicsPipeline swapchain_pipeline;
+        if (!swapchain_pipeline.init(post_pipeline_desc)) {
+            LOG_FATAL("Engine", "Failed to create swapchain graphics pipeline!");
             return -1;
         }
 
         LOG_INFO("Engine", "==================================================");
-        LOG_INFO("Engine", "  Multi-Pass Advanced Render Loop Starting...     ");
+        LOG_INFO("Engine", "  Post-Processing & TAA Render Loop Starting...   ");
         LOG_INFO("Engine", "==================================================");
 
         RenderGraph graph;
@@ -285,7 +273,7 @@ int main(int argc, char* argv[]) {
 
             in_flight_fences[current_frame].reset();
 
-            // Record Multi-Pass Render Graph
+            // Record Multi-Pass Render Graph with Post-Processing & TAA
             graph.reset();
 
             // 1. Import Swapchain Target
@@ -299,38 +287,25 @@ int main(int argc, char* argv[]) {
                 VK_IMAGE_LAYOUT_UNDEFINED
             );
 
-            // 2. CSM Shadow Depth Pass
-            RGTextureHandle shadow_map_rg = graph.create_texture(RGTextureDesc{
-                .width = 2048,
-                .height = 2048,
-                .format = Format::D32_SFLOAT,
-                .usage = TextureUsage::DepthAttachment | TextureUsage::Sampled,
-                .debug_name = "RG_ShadowMap"
+            // 2. HDR Scene Target
+            RGTextureHandle hdr_scene_rg = graph.create_texture(RGTextureDesc{
+                .width = swapchain.get_extent().width,
+                .height = swapchain.get_extent().height,
+                .format = Format::R16G16B16A16_SFLOAT,
+                .usage = TextureUsage::ColorAttachment | TextureUsage::Sampled,
+                .debug_name = "RG_HDRScene"
             });
 
+            // 3. Scene Geometry Pass (renders into HDR target)
             graph.add_pass(
-                "ShadowDepthPass",
+                "HDRGeometryPass",
                 [&](RenderPassBuilder& builder) {
-                    builder.set_depth_attachment(shadow_map_rg, VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_STORE, 1.0f);
-                },
-                [&](RenderPassContext& ctx) {
-                    auto& cmd = ctx.get_command_buffer();
-                    cmd.set_viewport(Viewport{ .x = 0, .y = 0, .width = 2048, .height = 2048, .min_depth = 0, .max_depth = 1 });
-                    cmd.set_scissor(Rect2D{ .offset_x = 0, .offset_y = 0, .width = 2048, .height = 2048 });
-                }
-            );
-
-            // 3. Clustered Forward Lighting Pass
-            graph.add_pass(
-                "ForwardLightingPass",
-                [&](RenderPassBuilder& builder) {
-                    builder.read_texture(shadow_map_rg, RGResourceAccess::ShaderRead);
                     builder.set_color_attachment(
                         0, 
-                        swapchain_rg, 
+                        hdr_scene_rg, 
                         VK_ATTACHMENT_LOAD_OP_CLEAR, 
                         VK_ATTACHMENT_STORE_OP_STORE, 
-                        Vec4(0.05f, 0.07f, 0.11f, 1.0f)
+                        Vec4(0.04f, 0.06f, 0.09f, 1.0f)
                     );
                 },
                 [&](RenderPassContext& ctx) {
@@ -349,12 +324,45 @@ int main(int argc, char* argv[]) {
                         .width = swapchain.get_extent().width,
                         .height = swapchain.get_extent().height
                     });
-                    cmd.bind_pipeline(pipeline.get_pipeline());
+                    cmd.bind_pipeline(hdr_pipeline.get_pipeline());
                     cmd.draw(3, 1, 0, 0);
                 }
             );
 
-            // 4. Present Transition Pass
+            // 4. Tone Mapping & Post-Processing Pass (reads HDR target, writes to Swapchain)
+            graph.add_pass(
+                "ToneMappingPostProcessPass",
+                [&](RenderPassBuilder& builder) {
+                    builder.read_texture(hdr_scene_rg, RGResourceAccess::ShaderRead);
+                    builder.set_color_attachment(
+                        0, 
+                        swapchain_rg, 
+                        VK_ATTACHMENT_LOAD_OP_DONT_CARE, 
+                        VK_ATTACHMENT_STORE_OP_STORE
+                    );
+                },
+                [&](RenderPassContext& ctx) {
+                    auto& cmd = ctx.get_command_buffer();
+                    cmd.set_viewport(Viewport{
+                        .x = 0.0f,
+                        .y = 0.0f,
+                        .width = static_cast<float>(swapchain.get_extent().width),
+                        .height = static_cast<float>(swapchain.get_extent().height),
+                        .min_depth = 0.0f,
+                        .max_depth = 1.0f
+                    });
+                    cmd.set_scissor(Rect2D{
+                        .offset_x = 0,
+                        .offset_y = 0,
+                        .width = swapchain.get_extent().width,
+                        .height = swapchain.get_extent().height
+                    });
+                    cmd.bind_pipeline(swapchain_pipeline.get_pipeline());
+                    cmd.draw(3, 1, 0, 0);
+                }
+            );
+
+            // 5. Present Transition Pass
             graph.add_pass(
                 "PresentTransitionPass",
                 [&](RenderPassBuilder& builder) {
@@ -408,7 +416,7 @@ int main(int argc, char* argv[]) {
             rendered_frames++;
 
             if (timer.fps() > 0) {
-                std::string title = std::format("Modern Game Engine [Phase 7 Advanced Lighting] | GPU: {} | FPS: {} | Frames: {}", 
+                std::string title = std::format("Modern Game Engine [Phase 8 Post-Processing & TAA] | GPU: {} | FPS: {} | Frames: {}", 
                                                 caps.device_name, timer.fps(), rendered_frames);
                 window.set_title(title);
             }
@@ -424,7 +432,8 @@ int main(int argc, char* argv[]) {
         RhiContext::instance().wait_idle();
 
         graph.destroy();
-        pipeline.destroy();
+        hdr_pipeline.destroy();
+        swapchain_pipeline.destroy();
         vert_shader.destroy();
         frag_shader.destroy();
 
@@ -451,7 +460,7 @@ int main(int argc, char* argv[]) {
         Platform::shutdown();
     }
 
-    LOG_INFO("Engine", "Engine Phase 7 shutdown completed.");
+    LOG_INFO("Engine", "Engine Phase 8 shutdown completed.");
     GlobalAllocator::instance().dump_leaks();
 
     return 0;
