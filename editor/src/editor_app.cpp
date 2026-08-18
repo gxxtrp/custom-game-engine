@@ -683,26 +683,28 @@ void EditorApp::render_toolbar() {
         ImGui::SameLine(ImGui::GetCursorPosX() + (avail_w - center_group_w) * 0.5f);
 
         // Play Button
-        if (m_mode == EditorMode::Play) {
+        bool is_playing = (m_mode == EditorMode::Play);
+        if (is_playing) {
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.20f, 0.70f, 0.35f, 1.0f));
         }
         if (ImGui::Button(" > Play ")) {
             set_mode(EditorMode::Play);
         }
-        if (m_mode == EditorMode::Play) {
+        if (is_playing) {
             ImGui::PopStyleColor();
         }
 
         ImGui::SameLine();
 
         // Pause Button
-        if (m_mode == EditorMode::Paused) {
+        bool is_paused = (m_mode == EditorMode::Paused);
+        if (is_paused) {
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.85f, 0.65f, 0.15f, 1.0f));
         }
         if (ImGui::Button(" || Pause ")) {
             set_mode(EditorMode::Paused);
         }
-        if (m_mode == EditorMode::Paused) {
+        if (is_paused) {
             ImGui::PopStyleColor();
         }
 
@@ -726,13 +728,14 @@ void EditorApp::render_toolbar() {
         ImGui::SameLine();
 
         // Simulate Button
-        if (m_mode == EditorMode::Simulate) {
+        bool is_simulating = (m_mode == EditorMode::Simulate);
+        if (is_simulating) {
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.20f, 0.65f, 0.85f, 1.0f));
         }
         if (ImGui::Button(" * Simulate ")) {
             set_mode(EditorMode::Simulate);
         }
-        if (m_mode == EditorMode::Simulate) {
+        if (is_simulating) {
             ImGui::PopStyleColor();
         }
 
