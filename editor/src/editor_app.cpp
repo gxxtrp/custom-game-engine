@@ -361,7 +361,7 @@ void EditorApp::create_primitive_entity(std::string_view type) {
         player.set<MeshRendererComponent>(MeshRendererComponent{ .cast_shadows = true });
         player.set<AudioSourceComponent>(AudioSourceComponent{ .sound_name = "sfx_footstep.wav", .volume = 0.8f });
         player.set<ScriptComponent>(ScriptComponent{ .class_name = "PlayerController" });
-        m_selected_entity_id = player.get_id();
+        m_selection_context.select(player.get_raw(), false);
     } else if (type == "DynamicPhysicsBox") {
         Entity box = m_active_scene.create_entity("DynamicPhysicsBox");
         box.set<TransformComponent>(TransformComponent{ .position = Vec3(2.0f, 5.0f, 0.0f) });
@@ -396,7 +396,7 @@ void EditorApp::create_primitive_entity(std::string_view type) {
 
 void EditorApp::new_scene() {
     m_active_scene.clear();
-    m_selected_entity_id = 0;
+    m_selection_context.clear();
     m_current_scene_path = "/maps/untitled.map";
     LOG_INFO("Editor", "Created new empty scene");
 }
@@ -533,16 +533,24 @@ void EditorApp::render_main_menu_bar() {
                 LOG_INFO("Editor", "Duplicated selected entity");
             }
             if (ImGui::MenuItem("Delete", "Delete")) {
-                if (m_selected_entity_id != 0) {
-                    auto e = m_active_scene.get_world().entity(m_selected_entity_id);
-                    if (e.is_valid()) e.destruct();
-                    m_selected_entity_id = 0;
+                if (m_selection_context.has_selection()) {
+                    for (uint64_t eid : m_selection_context.get_all_selected()) {
+                        auto e = m_active_scene.get_world().entity(eid);
+                        if (e.is_valid() && e.is_alive()) e.destruct();
+                    }
+                    m_selection_context.clear();
                 }
             }
             ImGui::Separator();
-            if (ImGui::MenuItem("Select All", "Ctrl+A")) {}
+            if (ImGui::MenuItem("Select All", "Ctrl+A")) {
+                m_active_scene.get_world().each([&](flecs::entity e, const engine::scene::TagComponent&) {
+                    if (e.is_valid() && e.is_alive()) {
+                        m_selection_context.select(e, true);
+                    }
+                });
+            }
             if (ImGui::MenuItem("Deselect All", "Escape")) {
-                m_selected_entity_id = 0;
+                m_selection_context.clear();
             }
             ImGui::Separator();
             if (ImGui::MenuItem("Editor Preferences...")) {}
@@ -790,284 +798,21 @@ void EditorApp::render_status_bar() {
 }
 
 void EditorApp::render_viewport_panel() {
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-    if (ImGui::Begin("Viewport", &m_show_viewport, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
-        ImVec2 size = ImGui::GetContentRegionAvail();
-
-        // Sleek Viewport Top Overlay Bar
-        ImGui::SetCursorPos(ImVec2(12, 12));
-        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6, 4));
-        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8, 0));
-        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.08f, 0.09f, 0.12f, 0.88f));
-        ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.25f, 0.28f, 0.35f, 0.60f));
-        
-        if (ImGui::BeginChild("##ViewportOverlay", ImVec2(380, 36), true, ImGuiWindowFlags_NoScrollbar)) {
-            ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 2.0f);
-            const char* shading_modes[] = { " Lit (PBR) ", " Unlit / Albedo ", " Wireframe ", " Normals ", " Roughness / Metallic " };
-            ImGui::SetNextItemWidth(170.0f);
-            ImGui::Combo("##ShadingMode", &m_shading_mode, shading_modes, IM_ARRAYSIZE(shading_modes));
-
-            ImGui::SameLine();
-            ImGui::TextDisabled("|");
-            ImGui::SameLine();
-            ImGui::TextColored(ImVec4(0.4f, 0.75f, 1.0f, 0.9f), "%.0f x %.0f", size.x, size.y);
-
-            ImGui::EndChild();
-        }
-        ImGui::PopStyleColor(2);
-        ImGui::PopStyleVar(2);
-
-        // Render Canvas Center Notice
-        ImVec2 center_text_pos = ImVec2(std::max(10.0f, size.x * 0.5f - 140.0f), std::max(10.0f, size.y * 0.5f - 12.0f));
-        if (size.x > 50.0f && size.y > 50.0f) {
-            ImGui::SetCursorPos(center_text_pos);
-            ImGui::TextColored(ImVec4(0.40f, 0.50f, 0.60f, 0.70f), "[ 3D Vulkan 1.3 Viewport Surface ]");
-        }
-    }
-    ImGui::End();
-    ImGui::PopStyleVar();
+    float dt = static_cast<float>(m_timer.delta_time());
+    m_viewport.set_gizmo_operation(m_current_gizmo_op);
+    m_viewport.set_gizmo_mode(m_current_gizmo_mode);
+    m_viewport.set_snapping_enabled(m_use_snap);
+    m_viewport.render(m_active_scene, m_selection_context, dt, &m_show_viewport);
 }
 
 void EditorApp::render_outliner_panel() {
-    if (ImGui::Begin("Outliner", &m_show_outliner)) {
-        // Search filter & Add button
-        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 70.0f);
-        ImGui::InputTextWithHint("##OutlinerFilter", "Filter entities...", m_outliner_filter, sizeof(m_outliner_filter));
-        ImGui::SameLine();
-        if (ImGui::Button("+ Create", ImVec2(-1, 0))) {
-            ImGui::OpenPopup("OutlinerCreatePopup");
-        }
-
-        if (ImGui::BeginPopup("OutlinerCreatePopup")) {
-            if (ImGui::MenuItem("Empty Entity")) create_primitive_entity("EmptyEntity");
-            if (ImGui::MenuItem("Cube Mesh")) create_primitive_entity("Cube");
-            if (ImGui::MenuItem("Sphere Mesh")) create_primitive_entity("Sphere");
-            if (ImGui::MenuItem("Point Light")) create_primitive_entity("PointLight");
-            if (ImGui::MenuItem("Camera")) create_primitive_entity("Camera");
-            ImGui::EndPopup();
-        }
-
-        ImGui::Separator();
-
-        uint64_t entity_to_delete = 0;
-
-        // Entity Hierarchy Tree
-        m_active_scene.get_world().each([&](flecs::entity entity, const engine::scene::TagComponent& tag) {
-            if (!entity.is_valid() || !entity.is_alive()) return;
-
-            // Apply filter string if set
-            if (m_outliner_filter[0] != '\0' && tag.name.find(m_outliner_filter) == std::string::npos) {
-                return;
-            }
-
-            ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_Leaf;
-            if (m_selected_entity_id == entity.id()) {
-                flags |= ImGuiTreeNodeFlags_Selected;
-            }
-
-            std::string label = std::format("{}  (ID: {})", tag.name, entity.id());
-            bool opened = ImGui::TreeNodeEx(reinterpret_cast<void*>(static_cast<uintptr_t>(entity.id())), flags, "%s", label.c_str());
-
-            if (ImGui::IsItemClicked()) {
-                m_selected_entity_id = entity.id();
-            }
-
-            // Context Menu for entity
-            if (ImGui::BeginPopupContextItem()) {
-                if (ImGui::MenuItem("Rename")) {}
-                if (ImGui::MenuItem("Duplicate")) {
-                    engine::scene::Entity copy = m_active_scene.create_entity(tag.name + "_Copy");
-                    if (entity.has<engine::scene::TransformComponent>()) {
-                        copy.set<engine::scene::TransformComponent>(entity.get<engine::scene::TransformComponent>());
-                    }
-                }
-                ImGui::Separator();
-                if (ImGui::MenuItem("Delete")) {
-                    entity_to_delete = entity.id();
-                }
-                ImGui::EndPopup();
-            }
-
-            if (opened) {
-                ImGui::TreePop();
-            }
-        });
-
-        if (entity_to_delete != 0) {
-            if (m_selected_entity_id == entity_to_delete) {
-                m_selected_entity_id = 0;
-            }
-            flecs::entity e = m_active_scene.get_world().entity(entity_to_delete);
-            if (e.is_valid() && e.is_alive()) {
-                e.destruct();
-            }
-        }
-    }
-    ImGui::End();
+    m_outliner_panel.render(m_active_scene, m_selection_context, &m_show_outliner);
 }
 
 void EditorApp::render_inspector_panel() {
-    if (ImGui::Begin("Inspector", &m_show_inspector)) {
-        if (m_selected_entity_id == 0) {
-            ImGui::TextDisabled("Select an entity from Outliner or Viewport to inspect properties.");
-            ImGui::End();
-            return;
-        }
-
-        auto entity = m_active_scene.get_world().entity(m_selected_entity_id);
-        if (!entity.is_valid() || !entity.is_alive()) {
-            m_selected_entity_id = 0;
-            ImGui::TextDisabled("Entity is no longer valid.");
-            ImGui::End();
-            return;
-        }
-
-        // 1. Tag & Identity Header
-        if (entity.has<engine::scene::TagComponent>()) {
-            auto& tag = entity.ensure<engine::scene::TagComponent>();
-            char name_buf[128];
-            strncpy_s(name_buf, tag.name.c_str(), sizeof(name_buf));
-            ImGui::SetNextItemWidth(-1);
-            if (ImGui::InputText("##EntityName", name_buf, sizeof(name_buf))) {
-                tag.name = name_buf;
-            }
-        }
-        ImGui::TextDisabled("UUID: %s", entity.has<engine::scene::UUIDComponent>() 
-            ? entity.get<engine::scene::UUIDComponent>().uuid.to_string().c_str() : "N/A");
-
-        ImGui::Separator();
-
-        // 2. Transform Component
-        if (entity.has<engine::scene::TransformComponent>()) {
-            if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
-                auto& trans = entity.ensure<engine::scene::TransformComponent>();
-                // Position
-                float pos[3] = { trans.position.x, trans.position.y, trans.position.z };
-                if (ImGui::DragFloat3("Position", pos, 0.1f)) {
-                    trans.position = engine::core::Vec3(pos[0], pos[1], pos[2]);
-                    trans.is_dirty = true;
-                }
-
-                // Scale
-                float scale[3] = { trans.scale.x, trans.scale.y, trans.scale.z };
-                if (ImGui::DragFloat3("Scale", scale, 0.05f, 0.001f, 1000.0f)) {
-                    trans.scale = engine::core::Vec3(scale[0], scale[1], scale[2]);
-                    trans.is_dirty = true;
-                }
-            }
-        }
-
-        // 3. Mesh Renderer Component
-        if (entity.has<engine::scene::MeshRendererComponent>()) {
-            if (ImGui::CollapsingHeader("Mesh Renderer", ImGuiTreeNodeFlags_DefaultOpen)) {
-                auto& mr = entity.ensure<engine::scene::MeshRendererComponent>();
-                ImGui::Checkbox("Cast Shadows", &mr.cast_shadows);
-                ImGui::Checkbox("Receive Shadows", &mr.receive_shadows);
-                ImGui::Checkbox("Visible", &mr.is_visible);
-            }
-        }
-
-        // 4. Directional Light Component
-        if (entity.has<engine::scene::DirectionalLightComponent>()) {
-            if (ImGui::CollapsingHeader("Directional Light", ImGuiTreeNodeFlags_DefaultOpen)) {
-                auto& dl = entity.ensure<engine::scene::DirectionalLightComponent>();
-                float col[3] = { dl.color.x, dl.color.y, dl.color.z };
-                if (ImGui::ColorEdit3("Color", col)) {
-                    dl.color = engine::core::Vec3(col[0], col[1], col[2]);
-                }
-                ImGui::DragFloat("Intensity", &dl.intensity, 0.1f, 0.0f, 100.0f);
-                ImGui::Checkbox("Cast Shadows", &dl.cast_shadows);
-            }
-        }
-
-        // 5. Point Light Component
-        if (entity.has<engine::scene::PointLightComponent>()) {
-            if (ImGui::CollapsingHeader("Point Light", ImGuiTreeNodeFlags_DefaultOpen)) {
-                auto& pl = entity.ensure<engine::scene::PointLightComponent>();
-                float col[3] = { pl.color.x, pl.color.y, pl.color.z };
-                if (ImGui::ColorEdit3("Color", col)) {
-                    pl.color = engine::core::Vec3(col[0], col[1], col[2]);
-                }
-                ImGui::DragFloat("Intensity", &pl.intensity, 0.1f, 0.0f, 100.0f);
-                ImGui::DragFloat("Radius", &pl.radius, 0.2f, 0.1f, 100.0f);
-            }
-        }
-
-        // 6. RigidBody Component
-        if (entity.has<engine::physics::RigidBodyComponent>()) {
-            if (ImGui::CollapsingHeader("Rigid Body (Jolt Physics)", ImGuiTreeNodeFlags_DefaultOpen)) {
-                auto& rb = entity.ensure<engine::physics::RigidBodyComponent>();
-                const char* motion_types[] = { "Static", "Kinematic", "Dynamic" };
-                int current_motion = static_cast<int>(rb.motion_type);
-                if (ImGui::Combo("Motion Type", &current_motion, motion_types, 3)) {
-                    rb.motion_type = static_cast<engine::physics::BodyMotionType>(current_motion);
-                }
-                ImGui::DragFloat("Mass", &rb.mass, 0.1f, 0.01f, 10000.0f);
-                ImGui::DragFloat("Friction", &rb.friction, 0.05f, 0.0f, 1.0f);
-                ImGui::DragFloat("Restitution", &rb.restitution, 0.05f, 0.0f, 1.0f);
-            }
-        }
-
-        // 7. Audio Source Component
-        if (entity.has<engine::audio::AudioSourceComponent>()) {
-            if (ImGui::CollapsingHeader("Audio Source", ImGuiTreeNodeFlags_DefaultOpen)) {
-                auto& audio = entity.ensure<engine::audio::AudioSourceComponent>();
-                char sfx_buf[128];
-                strncpy_s(sfx_buf, audio.sound_name.c_str(), sizeof(sfx_buf));
-                if (ImGui::InputText("Sound File", sfx_buf, sizeof(sfx_buf))) {
-                    audio.sound_name = sfx_buf;
-                }
-                ImGui::SliderFloat("Volume", &audio.volume, 0.0f, 1.0f);
-                ImGui::SliderFloat("Pitch", &audio.pitch, 0.1f, 2.0f);
-                ImGui::Checkbox("Looping", &audio.is_looping);
-            }
-        }
-
-        // 8. Script Component
-        if (entity.has<engine::scripting::ScriptComponent>()) {
-            if (ImGui::CollapsingHeader("Lua Script Component", ImGuiTreeNodeFlags_DefaultOpen)) {
-                auto& script = entity.ensure<engine::scripting::ScriptComponent>();
-                char script_buf[128];
-                strncpy_s(script_buf, script.class_name.c_str(), sizeof(script_buf));
-                if (ImGui::InputText("Script Class", script_buf, sizeof(script_buf))) {
-                    script.class_name = script_buf;
-                }
-            }
-        }
-
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
-
-        // Add Component Button
-        if (ImGui::Button("+ Add Component...", ImVec2(-1, 28))) {
-            ImGui::OpenPopup("AddComponentPopup");
-        }
-
-        if (ImGui::BeginPopup("AddComponentPopup")) {
-            if (!entity.has<engine::scene::MeshRendererComponent>() && ImGui::MenuItem("Mesh Renderer")) {
-                entity.emplace<engine::scene::MeshRendererComponent>();
-            }
-            if (!entity.has<engine::scene::DirectionalLightComponent>() && ImGui::MenuItem("Directional Light")) {
-                entity.emplace<engine::scene::DirectionalLightComponent>();
-            }
-            if (!entity.has<engine::scene::PointLightComponent>() && ImGui::MenuItem("Point Light")) {
-                entity.emplace<engine::scene::PointLightComponent>();
-            }
-            if (!entity.has<engine::physics::RigidBodyComponent>() && ImGui::MenuItem("Rigid Body")) {
-                entity.emplace<engine::physics::RigidBodyComponent>();
-            }
-            if (!entity.has<engine::audio::AudioSourceComponent>() && ImGui::MenuItem("Audio Source")) {
-                entity.emplace<engine::audio::AudioSourceComponent>();
-            }
-            if (!entity.has<engine::scripting::ScriptComponent>() && ImGui::MenuItem("Lua Script")) {
-                entity.emplace<engine::scripting::ScriptComponent>();
-            }
-            ImGui::EndPopup();
-        }
-    }
-    ImGui::End();
+    m_inspector_panel.render(m_active_scene, m_selection_context, &m_show_inspector);
 }
+
 
 void EditorApp::render_content_browser_panel() {
     if (ImGui::Begin("Content Browser", &m_show_content_browser)) {
@@ -1359,8 +1104,8 @@ void EditorApp::step() {
         engine::input::InputManager::instance().process_event(event);
 
         if (event.type == engine::core::EventType::KeyDown) {
-            if (event.key.key == engine::core::KeyCode::Escape && m_selected_entity_id != 0) {
-                m_selected_entity_id = 0; // Deselect entity
+            if (event.key.key == engine::core::KeyCode::Escape && m_selection_context.has_selection()) {
+                m_selection_context.clear(); // Deselect entities
             } else if (event.key.key == engine::core::KeyCode::W && !ImGui::GetIO().WantTextInput) {
                 m_current_gizmo_op = ImGuizmo::TRANSLATE;
             } else if (event.key.key == engine::core::KeyCode::E && !ImGui::GetIO().WantTextInput) {
@@ -1369,6 +1114,8 @@ void EditorApp::step() {
                 m_current_gizmo_op = ImGuizmo::SCALE;
             } else if (event.key.key == engine::core::KeyCode::Q && !ImGui::GetIO().WantTextInput) {
                 m_current_gizmo_op = static_cast<ImGuizmo::OPERATION>(0);
+            } else if (event.key.key == engine::core::KeyCode::F && !ImGui::GetIO().WantTextInput) {
+                m_viewport.focus_on_selection(m_selection_context);
             }
         } else if (event.type == engine::core::EventType::WindowResize) {
             m_swapchain.resize(event.window_resize.width, event.window_resize.height);

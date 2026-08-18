@@ -1,6 +1,10 @@
 add_executable(editor
     src/main.cpp
     src/editor_app.cpp
+    src/selection_context.cpp
+    src/outliner_panel.cpp
+    src/inspector_panel.cpp
+    src/scene_viewport.cpp
 )
 
 target_include_directories(editor PRIVATE

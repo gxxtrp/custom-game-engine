@@ -1,6 +1,10 @@
 #pragma once
 
 #include "engine/engine.h"
+#include "editor/selection_context.h"
+#include "editor/outliner_panel.h"
+#include "editor/inspector_panel.h"
+#include "editor/scene_viewport.h"
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <ImGuizmo.h>
@@ -72,6 +76,10 @@ public:
 
     engine::scene::Scene& get_active_scene() { return m_active_scene; }
     engine::core::Window& get_window() { return m_window; }
+    SelectionContext& get_selection_context() { return m_selection_context; }
+    OutlinerPanel& get_outliner_panel() { return m_outliner_panel; }
+    InspectorPanel& get_inspector_panel() { return m_inspector_panel; }
+    SceneViewport& get_viewport() { return m_viewport; }
 
 private:
     EditorApp();
@@ -147,18 +155,17 @@ private:
     bool m_show_about_dialog{false};
     bool m_show_imgui_demo{false};
 
-    // Selection & Outliner State
-    uint64_t m_selected_entity_id{0};
-    char m_outliner_filter[128]{""};
+    // Subsystem Panels & Context
+    SelectionContext m_selection_context;
+    OutlinerPanel m_outliner_panel;
+    InspectorPanel m_inspector_panel;
+    SceneViewport m_viewport;
 
     // Toolbar & Gizmo State
     ImGuizmo::OPERATION m_current_gizmo_op{ImGuizmo::TRANSLATE};
     ImGuizmo::MODE m_current_gizmo_mode{ImGuizmo::WORLD};
     bool m_use_snap{false};
     float m_camera_speed{1.0f};
-
-    // Viewport Shading Mode
-    int m_shading_mode{0}; // 0: Lit, 1: Unlit, 2: Wireframe, 3: Normals, 4: Roughness/Metallic
 
     // Console Panel State
     bool m_console_show_info{true};
