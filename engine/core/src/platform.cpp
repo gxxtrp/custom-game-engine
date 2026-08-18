@@ -159,12 +159,23 @@ void Platform::shutdown() {
     LOG_INFO("Platform", "SDL3 shutdown cleanly");
 }
 
+static Platform::RawEventCallback s_raw_event_cb = nullptr;
+
+void Platform::set_raw_event_callback(RawEventCallback cb) {
+    s_raw_event_cb = std::move(cb);
+}
+
 bool Platform::poll_events(DynamicArray<PlatformEvent>& out_events) {
     SDL_Event e;
     bool has_events = false;
 
     while (SDL_PollEvent(&e)) {
         has_events = true;
+
+        if (s_raw_event_cb) {
+            s_raw_event_cb(&e);
+        }
+
         PlatformEvent event{};
         event.timestamp_ns = e.common.timestamp;
 

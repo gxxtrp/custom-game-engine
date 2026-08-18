@@ -1,6 +1,7 @@
 #include "engine/input/input_manager.h"
 #include "engine/core/log.h"
 #include <algorithm>
+#include <cstring>
 
 namespace engine::input {
 
@@ -48,6 +49,14 @@ bool InputManager::init() {
     // Create default "Gameplay" context
     get_or_create_context("Gameplay");
     push_context("Gameplay");
+
+    std::memset(m_keys_down, 0, sizeof(m_keys_down));
+    std::memset(m_keys_just_pressed, 0, sizeof(m_keys_just_pressed));
+    std::memset(m_keys_just_released, 0, sizeof(m_keys_just_released));
+    std::memset(m_mouse_down, 0, sizeof(m_mouse_down));
+    std::memset(m_mouse_just_pressed, 0, sizeof(m_mouse_just_pressed));
+    std::memset(m_mouse_just_released, 0, sizeof(m_mouse_just_released));
+
     LOG_INFO("Input", "InputManager initialized");
     return true;
 }
@@ -83,6 +92,11 @@ void InputManager::new_frame() {
     m_mouse_delta = {0.0f, 0.0f};
     m_mouse_wheel = {0.0f, 0.0f};
 
+    std::memset(m_keys_just_pressed, 0, sizeof(m_keys_just_pressed));
+    std::memset(m_keys_just_released, 0, sizeof(m_keys_just_released));
+    std::memset(m_mouse_just_pressed, 0, sizeof(m_mouse_just_pressed));
+    std::memset(m_mouse_just_released, 0, sizeof(m_mouse_just_released));
+
     for (auto& [ctx_name, ctx] : m_contexts) {
         for (auto& [act_name, act] : ctx.actions) {
             act.just_pressed = false;
@@ -97,6 +111,39 @@ void InputManager::new_frame() {
 }
 
 void InputManager::process_event(const core::PlatformEvent& event) {
+    // 1. Process Global Key & Mouse States
+    if (event.type == core::EventType::KeyDown || event.type == core::EventType::KeyUp) {
+        bool is_down = (event.type == core::EventType::KeyDown);
+        size_t key_idx = static_cast<size_t>(event.key.key);
+
+        if (key_idx < 512) {
+            if (is_down && !m_keys_down[key_idx]) {
+                m_keys_just_pressed[key_idx] = true;
+            } else if (!is_down && m_keys_down[key_idx]) {
+                m_keys_just_released[key_idx] = true;
+            }
+            m_keys_down[key_idx] = is_down;
+        }
+    } else if (event.type == core::EventType::MouseButtonDown || event.type == core::EventType::MouseButtonUp) {
+        bool is_down = (event.type == core::EventType::MouseButtonDown);
+        size_t btn_idx = static_cast<size_t>(event.mouse_button.button);
+
+        if (btn_idx < 16) {
+            if (is_down && !m_mouse_down[btn_idx]) {
+                m_mouse_just_pressed[btn_idx] = true;
+            } else if (!is_down && m_mouse_down[btn_idx]) {
+                m_mouse_just_released[btn_idx] = true;
+            }
+            m_mouse_down[btn_idx] = is_down;
+        }
+    } else if (event.type == core::EventType::MouseMove) {
+        m_mouse_pos = {event.mouse_move.x, event.mouse_move.y};
+        m_mouse_delta = {event.mouse_move.dx, event.mouse_move.dy};
+    } else if (event.type == core::EventType::MouseWheel) {
+        m_mouse_wheel = {event.mouse_wheel.x_offset, event.mouse_wheel.y_offset};
+    }
+
+    // 2. Process Context-bound Actions & Axes
     if (m_active_context_stack.empty()) return;
     const std::string& current_ctx_name = m_active_context_stack.back();
     auto ctx_it = m_contexts.find(current_ctx_name);
@@ -140,16 +187,11 @@ void InputManager::process_event(const core::PlatformEvent& event) {
             }
         }
     } else if (event.type == core::EventType::MouseMove) {
-        m_mouse_pos = {event.mouse_move.x, event.mouse_move.y};
-        m_mouse_delta = {event.mouse_move.dx, event.mouse_move.dy};
-
         for (auto& [name, ax] : ctx.axes) {
             if (ax.mouse_axis == MouseAxis::DeltaX) ax.value = m_mouse_delta.x * ax.scale;
             if (ax.mouse_axis == MouseAxis::DeltaY) ax.value = m_mouse_delta.y * ax.scale;
         }
     } else if (event.type == core::EventType::MouseWheel) {
-        m_mouse_wheel = {event.mouse_wheel.x_offset, event.mouse_wheel.y_offset};
-
         for (auto& [name, ax] : ctx.axes) {
             if (ax.mouse_axis == MouseAxis::WheelX) ax.value = m_mouse_wheel.x * ax.scale;
             if (ax.mouse_axis == MouseAxis::WheelY) ax.value = m_mouse_wheel.y * ax.scale;
@@ -203,6 +245,36 @@ float InputManager::get_axis(std::string_view axis_name) const {
         return ax_it->second.value;
     }
     return 0.0f;
+}
+
+bool InputManager::is_key_down(core::KeyCode key) const {
+    size_t idx = static_cast<size_t>(key);
+    return idx < 512 && m_keys_down[idx];
+}
+
+bool InputManager::is_key_pressed(core::KeyCode key) const {
+    size_t idx = static_cast<size_t>(key);
+    return idx < 512 && m_keys_just_pressed[idx];
+}
+
+bool InputManager::is_key_released(core::KeyCode key) const {
+    size_t idx = static_cast<size_t>(key);
+    return idx < 512 && m_keys_just_released[idx];
+}
+
+bool InputManager::is_mouse_button_down(core::MouseButton button) const {
+    size_t idx = static_cast<size_t>(button);
+    return idx < 16 && m_mouse_down[idx];
+}
+
+bool InputManager::is_mouse_button_pressed(core::MouseButton button) const {
+    size_t idx = static_cast<size_t>(button);
+    return idx < 16 && m_mouse_just_pressed[idx];
+}
+
+bool InputManager::is_mouse_button_released(core::MouseButton button) const {
+    size_t idx = static_cast<size_t>(button);
+    return idx < 16 && m_mouse_just_released[idx];
 }
 
 } // namespace engine::input

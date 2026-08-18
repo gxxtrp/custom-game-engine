@@ -18,6 +18,7 @@ target_link_libraries(sandbox PRIVATE
     engine_physics
     engine_audio
     engine_scripting
+    engine_ui
 )
 
 engine_target_compile_options(sandbox)

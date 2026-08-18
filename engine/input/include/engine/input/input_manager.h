@@ -73,6 +73,15 @@ public:
     bool is_action_just_released(std::string_view action_name) const;
     float get_axis(std::string_view axis_name) const;
 
+    // Direct Key & Mouse Queries
+    bool is_key_down(core::KeyCode key) const;
+    bool is_key_pressed(core::KeyCode key) const;
+    bool is_key_released(core::KeyCode key) const;
+
+    bool is_mouse_button_down(core::MouseButton button) const;
+    bool is_mouse_button_pressed(core::MouseButton button) const;
+    bool is_mouse_button_released(core::MouseButton button) const;
+
     core::Vec2 get_mouse_position() const { return m_mouse_pos; }
     core::Vec2 get_mouse_delta() const { return m_mouse_delta; }
 
@@ -81,6 +90,14 @@ private:
 
     std::unordered_map<std::string, InputContext> m_contexts;
     std::vector<std::string> m_active_context_stack;
+
+    bool m_keys_down[512]{false};
+    bool m_keys_just_pressed[512]{false};
+    bool m_keys_just_released[512]{false};
+
+    bool m_mouse_down[16]{false};
+    bool m_mouse_just_pressed[16]{false};
+    bool m_mouse_just_released[16]{false};
 
     core::Vec2 m_mouse_pos{0.0f, 0.0f};
     core::Vec2 m_mouse_delta{0.0f, 0.0f};

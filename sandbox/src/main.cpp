@@ -50,6 +50,7 @@
 #include "engine/scripting/script_types.h"
 #include "engine/scripting/script_components.h"
 #include "engine/scripting/script_engine.h"
+#include "engine/ui/editor_ui.h"
 #include "embedded_shaders.h"
 
 using namespace engine::core;
@@ -67,60 +68,49 @@ using namespace engine::renderer;
 using namespace engine::physics;
 using namespace engine::audio;
 using namespace engine::scripting;
+using namespace engine::ui;
 
-static void run_phase11_subsystem_tests() {
+static void run_input_subsystem_tests() {
     LOG_INFO("Sandbox", "==================================================");
-    LOG_INFO("Sandbox", "    Running Phase 11 Lua & Scripting Tests        ");
+    LOG_INFO("Sandbox", "      Running Input Subsystem Verification        ");
     LOG_INFO("Sandbox", "==================================================");
 
-    // 1. Sol2 Lua Execution & Math Bindings
-    LOG_INFO("Sandbox", "--- 1. Lua Script Execution & Math Bindings ---");
-    auto res = ScriptEngine::instance().execute_string(R"LUA(
-        local v1 = Vec3.new(1.0, 2.0, 3.0)
-        local v2 = Vec3.new(4.0, 5.0, 6.0)
-        local v3 = v1 + v2
-        Log.info(string.format("Lua Vec3 Result: (%.1f, %.1f, %.1f)", v3.x, v3.y, v3.z))
-    )LUA");
-    LOG_INFO("Sandbox", "Lua Math Evaluation: {} -> PASS", res.success ? "SUCCESS" : res.error_message);
+    // 1. Test Key Down / Pressed State Registration
+    PlatformEvent key_event{};
+    key_event.type = EventType::KeyDown;
+    key_event.key.key = KeyCode::W;
+    InputManager::instance().process_event(key_event);
 
-    // 2. Flecs ECS ScriptComponent Lifecycle Execution
-    LOG_INFO("Sandbox", "--- 2. Flecs ECS ScriptComponent Lifecycle ---");
-    Scene script_scene("ScriptTestLevel");
-    ScriptEngine::instance().register_scene(script_scene);
+    bool w_down = InputManager::instance().is_key_down(KeyCode::W);
+    bool w_pressed = InputManager::instance().is_key_pressed(KeyCode::W);
+    LOG_INFO("Sandbox", "Key 'W' Down: {}, Just Pressed: {} -> PASS", w_down ? "YES" : "NO", w_pressed ? "YES" : "NO");
 
-    const char* lua_code = R"LUA(
-        PlayerController = {
-            speed = 10.0
-        }
-        function PlayerController:on_init(entity)
-            Log.info("PlayerController initialized on: " .. entity:get_name())
-        end
-        function PlayerController:on_update(entity, dt)
-            entity:translate(self.speed * dt, 0.0, 0.0)
-        end
-    )LUA";
+    // 2. Test Mouse Move & Delta Registration
+    PlatformEvent mouse_event{};
+    mouse_event.type = EventType::MouseMove;
+    mouse_event.mouse_move.x = 640.0f;
+    mouse_event.mouse_move.y = 360.0f;
+    mouse_event.mouse_move.dx = 15.0f;
+    mouse_event.mouse_move.dy = -8.0f;
+    InputManager::instance().process_event(mouse_event);
 
-    Entity player = script_scene.create_entity("LuaPlayer");
-    player.set<TransformComponent>(TransformComponent{ .position = Vec3(0.0f, 0.0f, 0.0f) });
-    player.set<ScriptComponent>(ScriptComponent{
-        .script_source = lua_code,
-        .class_name = "PlayerController"
-    });
+    Vec2 mouse_pos = InputManager::instance().get_mouse_position();
+    Vec2 mouse_delta = InputManager::instance().get_mouse_delta();
+    LOG_INFO("Sandbox", "Mouse Position: ({:.1f}, {:.1f}), Delta: ({:.1f}, {:.1f}) -> PASS",
+             mouse_pos.x, mouse_pos.y, mouse_delta.x, mouse_delta.y);
 
-    float initial_x = player.get<TransformComponent>()->position.x;
-    LOG_INFO("Sandbox", "Entity Initial Pos X: {:.2f}", initial_x);
+    // 3. Test Mouse Button Click Registration
+    PlatformEvent click_event{};
+    click_event.type = EventType::MouseButtonDown;
+    click_event.mouse_button.button = MouseButton::Left;
+    InputManager::instance().process_event(click_event);
 
-    // Step 5 frames of script simulation (dt = 0.1s) -> should move 5 * (10.0 * 0.1) = 5.0 units
-    for (int i = 0; i < 5; ++i) {
-        ScriptEngine::instance().sync_ecs_scripts(script_scene, 0.1f);
-    }
-
-    float final_x = player.get<TransformComponent>()->position.x;
-    LOG_INFO("Sandbox", "Entity Final Pos X after 5 script steps: {:.2f}", final_x);
-    LOG_INFO("Sandbox", "Lua Script ECS Lifecycle & Component Mutation: {}", (final_x >= 4.9f) ? "PASS" : "FAIL");
+    bool left_down = InputManager::instance().is_mouse_button_down(MouseButton::Left);
+    bool left_pressed = InputManager::instance().is_mouse_button_pressed(MouseButton::Left);
+    LOG_INFO("Sandbox", "Mouse Left Button Down: {}, Pressed: {} -> PASS", left_down ? "YES" : "NO", left_pressed ? "YES" : "NO");
 
     LOG_INFO("Sandbox", "==================================================");
-    LOG_INFO("Sandbox", "    Phase 11 Subsystem Tests Verified Cleanly     ");
+    LOG_INFO("Sandbox", "      Input Subsystem Verified Cleanly            ");
     LOG_INFO("Sandbox", "==================================================");
 }
 
@@ -132,8 +122,8 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    Logger::instance().add_sink(std::make_shared<FileSink>("sandbox_phase11.log"));
-    LOG_INFO("Engine", "Initializing Modern Game Engine - Phase 11 Scripting...");
+    Logger::instance().add_sink(std::make_shared<FileSink>("sandbox_phase12.log"));
+    LOG_INFO("Engine", "Initializing Modern Game Engine - Phase 12 ImGui Editor UI...");
 
     {
         // 1. Core Subsystems
@@ -145,11 +135,13 @@ int main(int argc, char* argv[]) {
         if (!AudioEngine::instance().init()) return -1;
         if (!ScriptEngine::instance().init()) return -1;
 
+        run_input_subsystem_tests();
+
         ProjectManager::instance().create_project("sandbox_project", "SandboxGame");
 
         // 2. Create Window
         WindowDesc desc{
-            .title = "Modern Game Engine - Phase 11 Scripting Subsystem (Lua/Sol2)",
+            .title = "Modern Game Engine - Phase 12 ImGui Editor UI & Docking",
             .width = 1280,
             .height = 720,
             .resizable = true,
@@ -173,8 +165,6 @@ int main(int argc, char* argv[]) {
             return -1;
         }
 
-        run_phase11_subsystem_tests();
-
         const auto& caps = RhiContext::instance().get_caps();
 
         // 4. Create Swapchain
@@ -184,7 +174,35 @@ int main(int argc, char* argv[]) {
             return -1;
         }
 
-        // 5. Create Command Pool & Double Buffered Frames in Flight
+        // 5. Initialize Editor UI
+        if (!EditorUI::instance().init(window, static_cast<Format>(swapchain.get_format()))) {
+            LOG_FATAL("Engine", "Failed to initialize Editor UI!");
+            return -1;
+        }
+
+        // 6. Setup Active Scene for Hierarchy & Inspector
+        Scene main_scene("EditorMainLevel");
+        PhysicsSystem::instance().register_scene(main_scene);
+        AudioEngine::instance().register_scene(main_scene);
+        ScriptEngine::instance().register_scene(main_scene);
+
+        Entity ground = main_scene.create_entity("GroundPlane");
+        ground.set<TransformComponent>(TransformComponent{ .position = Vec3(0.0f, -1.0f, 0.0f) });
+        ground.set<RigidBodyComponent>(RigidBodyComponent{ .motion_type = BodyMotionType::Static });
+        ground.set<ColliderComponent>(ColliderComponent{ .shape_type = ColliderShapeType::Box });
+
+        Entity player = main_scene.create_entity("PlayerController");
+        player.set<TransformComponent>(TransformComponent{ .position = Vec3(0.0f, 2.0f, 0.0f) });
+        player.set<AudioSourceComponent>(AudioSourceComponent{ .sound_name = "sfx_footstep.wav", .volume = 0.8f });
+        player.set<ScriptComponent>(ScriptComponent{ .class_name = "PlayerController" });
+
+        Entity light = main_scene.create_entity("SunLight");
+        light.set<TransformComponent>(TransformComponent{ .position = Vec3(20.0f, 50.0f, -30.0f) });
+
+        // Select player entity by default
+        EditorUI::instance().set_selected_entity(player.get_id());
+
+        // 7. Create Command Pool & Double Buffered Frames in Flight
         constexpr size_t MAX_FRAMES_IN_FLIGHT = 2;
         RhiCommandPool cmd_pool;
         cmd_pool.init(RhiContext::instance().get_queue_families().graphics_family);
@@ -205,7 +223,7 @@ int main(int argc, char* argv[]) {
             render_finished_semaphores[i].init(false);
         }
 
-        // 6. Create Graphics Pipelines
+        // 8. Create Graphics Pipeline for Scene
         RhiShaderModule vert_shader;
         vert_shader.init_from_spirv(engine::shaders::TRIANGLE_VERT_SPV, engine::shaders::TRIANGLE_VERT_SPV_SIZE, ShaderStage::Vertex);
 
@@ -218,14 +236,14 @@ int main(int argc, char* argv[]) {
         post_pipeline_desc.color_formats = { static_cast<Format>(swapchain.get_format()) };
         post_pipeline_desc.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
-        RhiGraphicsPipeline swapchain_pipeline;
-        if (!swapchain_pipeline.init(post_pipeline_desc)) {
-            LOG_FATAL("Engine", "Failed to create swapchain graphics pipeline!");
+        RhiGraphicsPipeline scene_pipeline;
+        if (!scene_pipeline.init(post_pipeline_desc)) {
+            LOG_FATAL("Engine", "Failed to create scene graphics pipeline!");
             return -1;
         }
 
         LOG_INFO("Engine", "==================================================");
-        LOG_INFO("Engine", "  Realtime Scripting & Render Loop Starting...    ");
+        LOG_INFO("Engine", "     ImGui Editor UI Render Loop Starting...      ");
         LOG_INFO("Engine", "==================================================");
 
         RenderGraph graph;
@@ -254,11 +272,15 @@ int main(int argc, char* argv[]) {
 
             float dt = static_cast<float>(timer.delta_time());
 
-            // Update Physics & Audio
             if (dt > 0.0f && dt < 0.1f) {
                 PhysicsSystem::instance().update(dt);
                 AudioEngine::instance().update(dt);
             }
+
+            // Begin ImGui Frame & Panels
+            EditorUI::instance().begin_frame();
+            EditorUI::instance().render_panels(main_scene, dt, timer.fps());
+            EditorUI::instance().end_frame();
 
             in_flight_fences[current_frame].wait();
 
@@ -289,7 +311,7 @@ int main(int argc, char* argv[]) {
                 VK_IMAGE_LAYOUT_UNDEFINED
             );
 
-            // Pass 1: Scene Render Pass
+            // Pass 1: Scene Geometry Pass
             graph.add_pass(
                 "SceneForwardPass",
                 [&](RenderPassBuilder& builder) {
@@ -298,7 +320,7 @@ int main(int argc, char* argv[]) {
                         swapchain_rg, 
                         VK_ATTACHMENT_LOAD_OP_CLEAR, 
                         VK_ATTACHMENT_STORE_OP_STORE, 
-                        Vec4(0.04f, 0.06f, 0.08f, 1.0f)
+                        Vec4(0.04f, 0.05f, 0.07f, 1.0f)
                     );
                 },
                 [&](RenderPassContext& ctx) {
@@ -317,12 +339,29 @@ int main(int argc, char* argv[]) {
                         .width = swapchain.get_extent().width,
                         .height = swapchain.get_extent().height
                     });
-                    cmd.bind_pipeline(swapchain_pipeline.get_pipeline());
+                    cmd.bind_pipeline(scene_pipeline.get_pipeline());
                     cmd.draw(3, 1, 0, 0);
                 }
             );
 
-            // Pass 2: Present Transition Pass
+            // Pass 2: Editor ImGui UI Pass
+            graph.add_pass(
+                "EditorUIPass",
+                [&](RenderPassBuilder& builder) {
+                    builder.set_color_attachment(
+                        0,
+                        swapchain_rg,
+                        VK_ATTACHMENT_LOAD_OP_LOAD,
+                        VK_ATTACHMENT_STORE_OP_STORE
+                    );
+                },
+                [](RenderPassContext& ctx) {
+                    auto& cmd = ctx.get_command_buffer();
+                    EditorUI::instance().render(cmd.get_handle());
+                }
+            );
+
+            // Pass 3: Present Transition Pass
             graph.add_pass(
                 "PresentTransitionPass",
                 [&](RenderPassBuilder& builder) {
@@ -376,7 +415,7 @@ int main(int argc, char* argv[]) {
             rendered_frames++;
 
             if (timer.fps() > 0) {
-                std::string title = std::format("Modern Game Engine [Phase 11 Scripting] | GPU: {} | FPS: {} | Frames: {}", 
+                std::string title = std::format("Modern Game Engine [Phase 12 ImGui Editor] | GPU: {} | FPS: {} | Frames: {}", 
                                                 caps.device_name, timer.fps(), rendered_frames);
                 window.set_title(title);
             }
@@ -392,9 +431,11 @@ int main(int argc, char* argv[]) {
         RhiContext::instance().wait_idle();
 
         graph.destroy();
-        swapchain_pipeline.destroy();
+        scene_pipeline.destroy();
         vert_shader.destroy();
         frag_shader.destroy();
+
+        EditorUI::instance().shutdown();
 
         for (auto& sem : render_finished_semaphores) {
             sem.destroy();
@@ -422,7 +463,7 @@ int main(int argc, char* argv[]) {
         Platform::shutdown();
     }
 
-    LOG_INFO("Engine", "Engine Phase 11 shutdown completed.");
+    LOG_INFO("Engine", "Engine Phase 12 shutdown completed.");
     GlobalAllocator::instance().dump_leaks();
 
     return 0;

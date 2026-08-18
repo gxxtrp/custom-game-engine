@@ -157,10 +157,13 @@ private:
 
 class Platform {
 public:
+    using RawEventCallback = std::function<void(const void* sdl_event)>;
+
     static bool init();
     static void shutdown();
     static bool poll_events(DynamicArray<PlatformEvent>& out_events);
     static void process_window_events(Window& window, const PlatformEvent& event);
+    static void set_raw_event_callback(RawEventCallback cb);
 };
 
 class Clock {
