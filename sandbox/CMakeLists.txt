@@ -13,6 +13,7 @@ target_link_libraries(sandbox PRIVATE
     engine_input
     engine_importer
     engine_rhi
+    engine_scene
 )
 
 engine_target_compile_options(sandbox)

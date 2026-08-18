@@ -192,7 +192,27 @@ bool GltfImporter::import_from_memory(const uint8_t* data, size_t size, std::str
         out_scene.lights.push_back(il);
     }
 
-    // 4. Import Nodes & Transforms
+    // 4. Import Cameras
+    out_scene.cameras.reserve(gltf_data->cameras_count);
+    for (size_t c_idx = 0; c_idx < gltf_data->cameras_count; ++c_idx) {
+        const auto& cam = gltf_data->cameras[c_idx];
+        ImportedCamera ic{};
+        ic.name = cam.name ? cam.name : std::format("Camera_{}", c_idx);
+        if (cam.type == cgltf_camera_type_perspective) {
+            ic.is_perspective = true;
+            ic.fov_y_deg = core::math::rad_to_deg(cam.data.perspective.yfov);
+            ic.aspect_ratio = cam.data.perspective.has_aspect_ratio ? cam.data.perspective.aspect_ratio : 1.777f;
+            ic.near_z = cam.data.perspective.znear;
+            ic.far_z = cam.data.perspective.has_zfar ? cam.data.perspective.zfar : 1000.0f;
+        } else if (cam.type == cgltf_camera_type_orthographic) {
+            ic.is_perspective = false;
+            ic.near_z = cam.data.orthographic.znear;
+            ic.far_z = cam.data.orthographic.zfar;
+        }
+        out_scene.cameras.push_back(ic);
+    }
+
+    // 5. Import Nodes & Transforms
     out_scene.nodes.reserve(gltf_data->nodes_count);
     for (size_t n_idx = 0; n_idx < gltf_data->nodes_count; ++n_idx) {
         const auto& node = gltf_data->nodes[n_idx];

@@ -10,6 +10,7 @@
     "vulkan-headers",
     "vulkan-memory-allocator",
     "cgltf",
-    "tomlplusplus"
+    "tomlplusplus",
+    "flecs"
   ]
 }
