@@ -224,7 +224,7 @@ bool EditorApp::init(const EditorAppDesc& desc) {
     engine::rhi::GraphicsPipelineDesc pipeline_desc{};
     pipeline_desc.vertex_shader = &m_vert_shader;
     pipeline_desc.fragment_shader = &m_frag_shader;
-    pipeline_desc.color_formats = { static_cast<engine::rhi::Format>(m_swapchain.get_format()) };
+    pipeline_desc.color_formats = { engine::rhi::Format::R8G8B8A8_UNORM };
     pipeline_desc.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
     if (!m_scene_pipeline.init(pipeline_desc)) {
@@ -305,6 +305,9 @@ bool EditorApp::init(const EditorAppDesc& desc) {
     engine::physics::PhysicsSystem::instance().register_scene(m_active_scene);
     engine::audio::AudioEngine::instance().register_scene(m_active_scene);
     engine::scripting::ScriptEngine::instance().register_scene(m_active_scene);
+
+    // Initialize initial offscreen viewport render target
+    create_or_resize_viewport_framebuffer(1280, 720);
 
     // Populate Initial Scene with Standard Objects
     create_primitive_entity("GroundPlane");
@@ -413,6 +416,49 @@ void EditorApp::save_scene() {
 void EditorApp::save_scene_as(const std::string& path) {
     m_current_scene_path = path;
     LOG_INFO("Editor", "Saved scene as {}", path);
+}
+
+void EditorApp::create_or_resize_viewport_framebuffer(uint32_t width, uint32_t height) {
+    width = std::max(width, 16u);
+    height = std::max(height, 16u);
+
+    if (m_viewport_texture.is_valid() && m_viewport_width == width && m_viewport_height == height) {
+        return;
+    }
+
+    engine::rhi::RhiContext::instance().wait_idle();
+
+    m_viewport_texture.destroy();
+
+    if (m_viewport_sampler.get_handle() == VK_NULL_HANDLE) {
+        m_viewport_sampler.init(engine::rhi::SamplerDesc{
+            .min_filter = engine::rhi::SamplerFilter::Linear,
+            .mag_filter = engine::rhi::SamplerFilter::Linear,
+            .address_u = engine::rhi::SamplerAddressMode::ClampToEdge,
+            .address_v = engine::rhi::SamplerAddressMode::ClampToEdge,
+            .address_w = engine::rhi::SamplerAddressMode::ClampToEdge,
+            .debug_name = "ViewportSampler"
+        });
+    }
+
+    m_viewport_texture.init(engine::rhi::TextureDesc{
+        .width = width,
+        .height = height,
+        .format = engine::rhi::Format::R8G8B8A8_UNORM,
+        .usage = engine::rhi::TextureUsage::ColorAttachment | engine::rhi::TextureUsage::Sampled,
+        .debug_name = "EditorViewportRT"
+    });
+
+    m_viewport_width = width;
+    m_viewport_height = height;
+
+    m_viewport.set_texture(
+        m_viewport_sampler.get_handle(),
+        m_viewport_texture.get_view(),
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+    );
+
+    LOG_INFO("Editor", "Allocated Viewport Offscreen Framebuffer ({}x{})", width, height);
 }
 
 float EditorApp::get_toolbar_height() const {
@@ -805,6 +851,15 @@ void EditorApp::render_viewport_panel() {
     m_viewport.set_gizmo_operation(m_current_gizmo_op);
     m_viewport.set_gizmo_mode(m_current_gizmo_mode);
     m_viewport.set_snapping_enabled(m_use_snap);
+
+    engine::core::Vec2 vp_size = m_viewport.get_size();
+    uint32_t req_w = static_cast<uint32_t>(std::max(vp_size.x, 64.0f));
+    uint32_t req_h = static_cast<uint32_t>(std::max(vp_size.y, 64.0f));
+
+    if (req_w != m_viewport_width || req_h != m_viewport_height || !m_viewport_texture.is_valid()) {
+        create_or_resize_viewport_framebuffer(req_w, req_h);
+    }
+
     m_viewport.render(m_active_scene, m_selection_context, dt, &m_show_viewport);
 }
 
@@ -1193,9 +1248,63 @@ void EditorApp::step() {
         VK_IMAGE_LAYOUT_UNDEFINED
     );
 
-    // Pass 1: Scene Forward Pass
+    if (m_viewport_texture.is_valid()) {
+        engine::renderer::RGTextureHandle viewport_rg = m_render_graph.import_texture(
+            "ViewportColorTarget",
+            m_viewport_texture.get_handle(),
+            m_viewport_texture.get_view(),
+            m_viewport_width,
+            m_viewport_height,
+            engine::rhi::Format::R8G8B8A8_UNORM,
+            VK_IMAGE_LAYOUT_UNDEFINED
+        );
+
+        // Pass 1: Scene Forward Pass (Renders triangle into the Viewport Render Target)
+        m_render_graph.add_pass(
+            "SceneForwardPass",
+            [&](engine::renderer::RenderPassBuilder& builder) {
+                builder.set_color_attachment(
+                    0,
+                    viewport_rg,
+                    VK_ATTACHMENT_LOAD_OP_CLEAR,
+                    VK_ATTACHMENT_STORE_OP_STORE,
+                    engine::core::Vec4(0.08f, 0.09f, 0.11f, 1.0f)
+                );
+            },
+            [&](engine::renderer::RenderPassContext& ctx) {
+                auto& cmd = ctx.get_command_buffer();
+                cmd.set_viewport(engine::rhi::Viewport{
+                    .x = 0.0f,
+                    .y = 0.0f,
+                    .width = static_cast<float>(m_viewport_width),
+                    .height = static_cast<float>(m_viewport_height),
+                    .min_depth = 0.0f,
+                    .max_depth = 1.0f
+                });
+                cmd.set_scissor(engine::rhi::Rect2D{
+                    .offset_x = 0,
+                    .offset_y = 0,
+                    .width = m_viewport_width,
+                    .height = m_viewport_height
+                });
+                cmd.bind_pipeline(m_scene_pipeline.get_pipeline());
+                cmd.draw(3, 1, 0, 0);
+            }
+        );
+
+        // Pass 2: Transition Viewport texture to Shader Read for ImGui Sampling
+        m_render_graph.add_pass(
+            "ViewportTransitionPass",
+            [&](engine::renderer::RenderPassBuilder& builder) {
+                builder.read_texture(viewport_rg, engine::renderer::RGResourceAccess::ShaderRead);
+            },
+            [](engine::renderer::RenderPassContext&) {}
+        );
+    }
+
+    // Pass 3: Editor UI Pass (Renders ImGui over the main window swapchain)
     m_render_graph.add_pass(
-        "SceneForwardPass",
+        "EditorUIPass",
         [&](engine::renderer::RenderPassBuilder& builder) {
             builder.set_color_attachment(
                 0,
@@ -1205,45 +1314,13 @@ void EditorApp::step() {
                 engine::core::Vec4(0.08f, 0.09f, 0.11f, 1.0f)
             );
         },
-        [&](engine::renderer::RenderPassContext& ctx) {
-            auto& cmd = ctx.get_command_buffer();
-            cmd.set_viewport(engine::rhi::Viewport{
-                .x = 0.0f,
-                .y = 0.0f,
-                .width = static_cast<float>(m_swapchain.get_extent().width),
-                .height = static_cast<float>(m_swapchain.get_extent().height),
-                .min_depth = 0.0f,
-                .max_depth = 1.0f
-            });
-            cmd.set_scissor(engine::rhi::Rect2D{
-                .offset_x = 0,
-                .offset_y = 0,
-                .width = m_swapchain.get_extent().width,
-                .height = m_swapchain.get_extent().height
-            });
-            cmd.bind_pipeline(m_scene_pipeline.get_pipeline());
-            cmd.draw(3, 1, 0, 0);
-        }
-    );
-
-    // Pass 2: Editor UI Pass
-    m_render_graph.add_pass(
-        "EditorUIPass",
-        [&](engine::renderer::RenderPassBuilder& builder) {
-            builder.set_color_attachment(
-                0,
-                swapchain_rg,
-                VK_ATTACHMENT_LOAD_OP_LOAD,
-                VK_ATTACHMENT_STORE_OP_STORE
-            );
-        },
         [](engine::renderer::RenderPassContext& ctx) {
             auto& cmd = ctx.get_command_buffer();
             ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd.get_handle());
         }
     );
 
-    // Pass 3: Present Transition Pass
+    // Pass 4: Present Transition Pass
     m_render_graph.add_pass(
         "PresentTransitionPass",
         [&](engine::renderer::RenderPassBuilder& builder) {
@@ -1331,6 +1408,9 @@ void EditorApp::shutdown() {
         m_image_available_semaphores[i].destroy();
         m_cmd_buffers[i].destroy(m_cmd_pool.get_handle());
     }
+    m_viewport_texture.destroy();
+    m_viewport_sampler.destroy();
+
     m_cmd_pool.destroy();
     m_swapchain.destroy();
 

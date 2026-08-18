@@ -111,10 +111,17 @@ private:
     void save_scene();
     void save_scene_as(const std::string& path);
     void create_primitive_entity(std::string_view type);
+    void create_or_resize_viewport_framebuffer(uint32_t width, uint32_t height);
 
     EditorAppDesc m_desc{};
     engine::core::Window m_window;
     engine::rhi::RhiSwapchain m_swapchain;
+
+    // Viewport Offscreen Render Target
+    engine::rhi::RhiTexture m_viewport_texture;
+    engine::rhi::RhiSampler m_viewport_sampler;
+    uint32_t m_viewport_width{1280};
+    uint32_t m_viewport_height{720};
 
     static constexpr size_t MAX_FRAMES_IN_FLIGHT = 2;
     engine::rhi::RhiCommandPool m_cmd_pool;
