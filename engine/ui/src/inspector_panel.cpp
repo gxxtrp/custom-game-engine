@@ -19,7 +19,7 @@ void InspectorPanel::render(scene::Scene& scene) {
     }
 
     flecs::entity e = scene.get_world().entity(selected_id);
-    if (!e.is_valid()) {
+    if (!e.is_valid() || !e.is_alive()) {
         ImGui::TextDisabled("Selected entity is no longer valid.");
         ImGui::End();
         return;

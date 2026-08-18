@@ -67,7 +67,7 @@ void ViewportPanel::render_gizmo(scene::Scene& scene) {
     if (selected_id == 0) return;
 
     flecs::entity e = scene.get_world().entity(selected_id);
-    if (!e.is_valid() || !e.has<scene::TransformComponent>()) return;
+    if (!e.is_valid() || !e.is_alive() || !e.has<scene::TransformComponent>()) return;
 
     auto& transform = e.ensure<scene::TransformComponent>();
 

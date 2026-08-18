@@ -11,7 +11,7 @@ gravity = [ 0.0, -9.8100004196167, 0.0 ]
 [project]
 default_map = 'maps/default.map'
 engine_version = '1.0.0'
-id = 'cae0b2e0-a8b5-45b9-a42e-895e22d0968d'
+id = 'c749867e-8cb0-4630-b809-2dad5ca5e511'
 name = 'SandboxGame'
 version = '0.1.0'
 

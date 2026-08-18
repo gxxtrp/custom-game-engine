@@ -10,4 +10,5 @@ include(CompilerFlags)
 include(Platforms)
 
 add_subdirectory(engine)
+add_subdirectory(tools)
 add_subdirectory(sandbox)
