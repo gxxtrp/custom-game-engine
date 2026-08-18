@@ -302,6 +302,13 @@ bool RhiContext::create_logical_device() {
     features12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
     features12.timelineSemaphore = VK_TRUE;
     features12.descriptorIndexing = VK_TRUE;
+    features12.descriptorBindingPartiallyBound = VK_TRUE;
+    features12.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
+    features12.descriptorBindingStorageBufferUpdateAfterBind = VK_TRUE;
+    features12.descriptorBindingUniformBufferUpdateAfterBind = VK_TRUE;
+    features12.runtimeDescriptorArray = VK_TRUE;
+    features12.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
+    features12.shaderStorageBufferArrayNonUniformIndexing = VK_TRUE;
     features12.bufferDeviceAddress = m_caps.buffer_device_address_supported ? VK_TRUE : VK_FALSE;
     features12.pNext = &features13;
 

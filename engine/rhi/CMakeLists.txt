@@ -5,11 +5,17 @@ add_library(engine_rhi STATIC
     include/engine/rhi/rhi_command_buffer.h
     include/engine/rhi/rhi_sync.h
     include/engine/rhi/rhi_pipeline.h
+    include/engine/rhi/rhi_buffer.h
+    include/engine/rhi/rhi_texture.h
+    include/engine/rhi/rhi_bindless.h
     src/rhi_context.cpp
     src/rhi_swapchain.cpp
     src/rhi_command_buffer.cpp
     src/rhi_sync.cpp
     src/rhi_pipeline.cpp
+    src/rhi_buffer.cpp
+    src/rhi_texture.cpp
+    src/rhi_bindless.cpp
 )
 
 target_include_directories(engine_rhi PUBLIC

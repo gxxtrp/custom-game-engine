@@ -20,11 +20,15 @@
 #include "engine/rhi/rhi_command_buffer.h"
 #include "engine/rhi/rhi_sync.h"
 #include "engine/rhi/rhi_pipeline.h"
+#include "engine/rhi/rhi_buffer.h"
+#include "engine/rhi/rhi_texture.h"
+#include "engine/rhi/rhi_bindless.h"
 #include "engine/scene/components.h"
 #include "engine/scene/entity.h"
 #include "engine/scene/scene.h"
 #include "engine/scene/map_serializer.h"
 #include "engine/scene/scene_importer.h"
+#include "engine/renderer/render_graph.h"
 #include "embedded_shaders.h"
 
 using namespace engine::core;
@@ -38,114 +42,88 @@ using namespace engine::input;
 using namespace engine::importer;
 using namespace engine::rhi;
 using namespace engine::scene;
+using namespace engine::renderer;
 
-static void run_phase4_subsystem_tests() {
+static void run_phase5_subsystem_tests() {
     LOG_INFO("Sandbox", "==================================================");
-    LOG_INFO("Sandbox", "    Running Phase 4 ECS & Scene Verification      ");
+    LOG_INFO("Sandbox", "    Running Phase 5 GPU & RenderGraph Tests       ");
     LOG_INFO("Sandbox", "==================================================");
 
-    // 1. Scene & Entity Creation
-    LOG_INFO("Sandbox", "--- 1. Flecs ECS Scene Hierarchy ---");
-    Scene scene("MainTestLevel");
+    // 1. VMA Buffer Allocation & Device Address
+    LOG_INFO("Sandbox", "--- 1. VMA Buffer Allocation & Memory Mapping ---");
+    struct TestVertex {
+        Vec3 pos;
+        Vec3 color;
+    };
+    TestVertex vertices[3] = {
+        { Vec3( 0.0f, -0.5f, 0.0f), Vec3(1.0f, 0.0f, 0.0f) },
+        { Vec3( 0.5f,  0.5f, 0.0f), Vec3(0.0f, 1.0f, 0.0f) },
+        { Vec3(-0.5f,  0.5f, 0.0f), Vec3(0.0f, 0.0f, 1.0f) }
+    };
 
-    Entity root = scene.create_entity("WorldRoot");
-    root.get_mut<TransformComponent>()->position = Vec3(10.0f, 0.0f, 0.0f);
+    BufferDesc vb_desc{
+        .size = sizeof(vertices),
+        .usage = BufferUsage::Vertex | BufferUsage::Storage | BufferUsage::TransferDst | BufferUsage::ShaderDeviceAddress,
+        .memory_usage = MemoryUsage::CpuToGpu,
+        .debug_name = "TestVertexBuffer"
+    };
 
-    Entity camera_ent = scene.create_child_entity(root, "MainCamera");
-    CameraComponent cam{};
-    cam.fov_deg = 60.0f;
-    cam.near_z = 0.1f;
-    cam.far_z = 1000.0f;
-    cam.is_primary = true;
-    camera_ent.set(cam);
+    RhiBuffer vertex_buffer;
+    bool vb_ok = vertex_buffer.init(vb_desc);
+    LOG_INFO("Sandbox", "VMA Vertex Buffer Creation: {}", vb_ok ? "PASS" : "FAIL");
 
-    Entity sun_ent = scene.create_child_entity(root, "SunDirectionalLight");
-    DirectionalLightComponent dl{};
-    dl.color = Vec3(1.0f, 0.95f, 0.85f);
-    dl.intensity = 3.5f;
-    dl.cast_shadows = true;
-    sun_ent.set(dl);
+    bool upload_ok = vertex_buffer.upload_data(vertices, sizeof(vertices));
+    LOG_INFO("Sandbox", "Buffer Data Upload (mapped memory): {}", upload_ok ? "PASS" : "FAIL");
 
-    Entity point_light_ent = scene.create_child_entity(root, "TorchPointLight");
-    PointLightComponent pl{};
-    pl.color = Vec3(1.0f, 0.5f, 0.1f);
-    pl.intensity = 2.0f;
-    pl.radius = 12.0f;
-    point_light_ent.set(pl);
-    point_light_ent.get_mut<TransformComponent>()->position = Vec3(0.0f, 5.0f, 0.0f);
+    VkDeviceAddress bda = vertex_buffer.get_device_address();
+    LOG_INFO("Sandbox", "Buffer Device Address (BDA 64-bit): {:#x}", bda);
 
-    Entity mesh_ent = scene.create_child_entity(root, "StatueMesh");
-    MeshRendererComponent mr{};
-    mr.mesh_uuid = UUID::generate();
-    mr.material_uuid = UUID::generate();
-    mr.cast_shadows = true;
-    mesh_ent.set(mr);
+    // 2. VMA Texture & Sampler Creation
+    LOG_INFO("Sandbox", "--- 2. VMA Texture & Sampler Allocation ---");
+    TextureDesc tex_desc{
+        .width = 512,
+        .height = 512,
+        .format = Format::R8G8B8A8_UNORM,
+        .usage = TextureUsage::Sampled | TextureUsage::ColorAttachment,
+        .debug_name = "TestAlbedoTexture"
+    };
 
-    LOG_INFO("Sandbox", "Created scene '{}' with {} entities", scene.get_name(), scene.get_entity_count());
+    RhiTexture texture;
+    bool tex_ok = texture.init(tex_desc);
+    LOG_INFO("Sandbox", "VMA 2D Texture Creation (512x512): {}", tex_ok ? "PASS" : "FAIL");
 
-    // 2. Transform Propagation
-    LOG_INFO("Sandbox", "--- 2. Hierarchical Transform Propagation ---");
-    scene.update(0.016f);
+    SamplerDesc samp_desc{
+        .min_filter = SamplerFilter::Linear,
+        .mag_filter = SamplerFilter::Linear,
+        .max_anisotropy = 16.0f,
+        .enable_anisotropy = true,
+        .debug_name = "AnisotropicLinearSampler"
+    };
 
-    Vec3 torch_world_pos = point_light_ent.get<WorldTransformComponent>()->get_world_position();
-    LOG_INFO("Sandbox", "Torch local position: (0, 5, 0), parent position: (10, 0, 0)");
-    LOG_INFO("Sandbox", "Calculated World Position: ({:.2f}, {:.2f}, {:.2f})", 
-             torch_world_pos.x, torch_world_pos.y, torch_world_pos.z);
-    bool transform_ok = (std::abs(torch_world_pos.x - 10.0f) < 0.001f && std::abs(torch_world_pos.y - 5.0f) < 0.001f);
-    LOG_INFO("Sandbox", "Transform Propagation: {}", transform_ok ? "PASS" : "FAIL");
+    RhiSampler sampler;
+    bool samp_ok = sampler.init(samp_desc);
+    LOG_INFO("Sandbox", "Anisotropic Sampler Creation: {}", samp_ok ? "PASS" : "FAIL");
 
-    // 3. Map Serialization & Deserialization
-    LOG_INFO("Sandbox", "--- 3. Map System TOML Serialization & Loading ---");
-    std::string saved_map_toml;
-    bool serialize_ok = MapSerializer::serialize_to_toml(scene, saved_map_toml);
-    LOG_INFO("Sandbox", "Map Serialization: {}", serialize_ok ? "PASS" : "FAIL");
+    // 3. Bindless Descriptor Indexing
+    LOG_INFO("Sandbox", "--- 3. Bindless Descriptor Heap Indexing ---");
+    uint32_t tex_slot = BindlessHeap::instance().register_texture(texture.get_view());
+    uint32_t buf_slot = BindlessHeap::instance().register_storage_buffer(vertex_buffer.get_handle(), vertex_buffer.get_size());
+    uint32_t samp_slot = BindlessHeap::instance().register_sampler(sampler.get_handle());
 
-    Scene loaded_scene("LoadedScene");
-    bool deserialize_ok = MapSerializer::deserialize_from_toml(saved_map_toml, loaded_scene);
-    LOG_INFO("Sandbox", "Map Deserialization: {}", deserialize_ok ? "PASS" : "FAIL");
-    LOG_INFO("Sandbox", "Loaded Scene Entity Count: {}", loaded_scene.get_entity_count());
+    LOG_INFO("Sandbox", "Bindless Registered Texture Slot: {} (Valid: {})", tex_slot, tex_slot != UINT32_MAX ? "PASS" : "FAIL");
+    LOG_INFO("Sandbox", "Bindless Registered Buffer Slot:  {} (Valid: {})", buf_slot, buf_slot != UINT32_MAX ? "PASS" : "FAIL");
+    LOG_INFO("Sandbox", "Bindless Registered Sampler Slot: {} (Valid: {})", samp_slot, samp_slot != UINT32_MAX ? "PASS" : "FAIL");
 
-    Entity loaded_torch = loaded_scene.find_entity_by_name("TorchPointLight");
-    if (loaded_torch.is_valid() && loaded_torch.has<PointLightComponent>()) {
-        const auto* loaded_pl = loaded_torch.get<PointLightComponent>();
-        LOG_INFO("Sandbox", "Loaded Torch Light: radius = {:.1f}, intensity = {:.1f} -> PASS", 
-                 loaded_pl->radius, loaded_pl->intensity);
-    } else {
-        LOG_ERROR("Sandbox", "Loaded Torch Light not found -> FAIL");
-    }
+    BindlessHeap::instance().unregister_texture(tex_slot);
+    BindlessHeap::instance().unregister_storage_buffer(buf_slot);
+    BindlessHeap::instance().unregister_sampler(samp_slot);
 
-    // 4. Universal DCC Scene Instantiation into ECS
-    LOG_INFO("Sandbox", "--- 4. DCC glTF Scene Instantiation into ECS ---");
-    const std::string sample_gltf = R"({
-        "asset": { "version": "2.0", "generator": "Blender glTF 2.0" },
-        "scenes": [ { "nodes": [ 0 ] } ],
-        "nodes": [
-            { "name": "Room", "children": [ 1, 2 ] },
-            { "name": "DeskLamp", "translation": [ 1.0, 2.0, 3.0 ] },
-            { "name": "PlayerCamera", "camera": 0, "translation": [ 0.0, 1.8, 0.0 ] }
-        ],
-        "cameras": [ { "type": "perspective", "perspective": { "yfov": 1.047, "znear": 0.1, "zfar": 500.0 } } ]
-    })";
-
-    GltfImporter importer;
-    ImportedScene imported_scene;
-    importer.import_from_memory(
-        reinterpret_cast<const uint8_t*>(sample_gltf.data()),
-        sample_gltf.size(),
-        "dcc_room.gltf",
-        imported_scene
-    );
-
-    Scene dcc_ecs_scene("DccEcsScene");
-    bool dcc_instantiate_ok = SceneImporter::instantiate_imported_scene(imported_scene, dcc_ecs_scene);
-    LOG_INFO("Sandbox", "DCC Scene Instantiation: {}", dcc_instantiate_ok ? "PASS" : "FAIL");
-    LOG_INFO("Sandbox", "DCC Scene Entities: {}", dcc_ecs_scene.get_entity_count());
-
-    Entity dcc_cam = dcc_ecs_scene.find_entity_by_name("PlayerCamera");
-    LOG_INFO("Sandbox", "DCC PlayerCamera found in ECS: {}", (dcc_cam.is_valid() && dcc_cam.has<CameraComponent>()) ? "PASS" : "FAIL");
+    sampler.destroy();
+    texture.destroy();
+    vertex_buffer.destroy();
 
     LOG_INFO("Sandbox", "==================================================");
-    LOG_INFO("Sandbox", "    Phase 4 Subsystem Tests Verified Cleanly      ");
+    LOG_INFO("Sandbox", "    Phase 5 Subsystem Tests Verified Cleanly      ");
     LOG_INFO("Sandbox", "==================================================");
 }
 
@@ -157,8 +135,8 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    Logger::instance().add_sink(std::make_shared<FileSink>("sandbox_phase4.log"));
-    LOG_INFO("Engine", "Initializing Modern Game Engine - Phase 4 ECS & Scene System...");
+    Logger::instance().add_sink(std::make_shared<FileSink>("sandbox_phase5.log"));
+    LOG_INFO("Engine", "Initializing Modern Game Engine - Phase 5 GPU & RenderGraph...");
 
     {
         // 1. Core Subsystems
@@ -167,14 +145,11 @@ int main(int argc, char* argv[]) {
         if (!AssetManager::instance().init()) return -1;
         if (!InputManager::instance().init()) return -1;
 
-        // Initialize Project System
         ProjectManager::instance().create_project("sandbox_project", "SandboxGame");
-
-        run_phase4_subsystem_tests();
 
         // 2. Create Window
         WindowDesc desc{
-            .title = "Modern Game Engine - Phase 4 ECS & Scene System",
+            .title = "Modern Game Engine - Phase 5 GPU Resources & RenderGraph",
             .width = 1280,
             .height = 720,
             .resizable = true,
@@ -187,11 +162,18 @@ int main(int argc, char* argv[]) {
             return -1;
         }
 
-        // 3. Initialize Vulkan 1.3 RHI
+        // 3. Initialize Vulkan 1.3 RHI & Bindless
         if (!RhiContext::instance().init(window, true)) {
             LOG_FATAL("Engine", "Failed to initialize Vulkan 1.3 RHI!");
             return -1;
         }
+
+        if (!BindlessHeap::instance().init()) {
+            LOG_FATAL("Engine", "Failed to initialize Bindless Heap!");
+            return -1;
+        }
+
+        run_phase5_subsystem_tests();
 
         const auto& caps = RhiContext::instance().get_caps();
 
@@ -223,7 +205,7 @@ int main(int argc, char* argv[]) {
             render_finished_semaphores[i].init(false);
         }
 
-        // 6. Create Shaders & Pipeline
+        // 6. Create Pipeline for RenderGraph
         RhiShaderModule vert_shader;
         vert_shader.init_from_spirv(engine::shaders::TRIANGLE_VERT_SPV, engine::shaders::TRIANGLE_VERT_SPV_SIZE, ShaderStage::Vertex);
 
@@ -242,6 +224,11 @@ int main(int argc, char* argv[]) {
             return -1;
         }
 
+        LOG_INFO("Engine", "==================================================");
+        LOG_INFO("Engine", "   Render Graph Multi-Pass Loop Starting...       ");
+        LOG_INFO("Engine", "==================================================");
+
+        RenderGraph graph;
         DynamicArray<PlatformEvent> events;
         FrameTimer timer;
         uint32_t current_frame = 0;
@@ -265,7 +252,7 @@ int main(int argc, char* argv[]) {
                 }
             }
 
-            // --- Render Frame ---
+            // --- Render Frame with Render Graph ---
             in_flight_fences[current_frame].wait();
 
             uint32_t image_index = 0;
@@ -282,67 +269,75 @@ int main(int argc, char* argv[]) {
 
             in_flight_fences[current_frame].reset();
 
-            // Record Commands
+            // Record Render Graph
+            graph.reset();
+
+            // Import Swapchain Attachment
+            RGTextureHandle swapchain_rg = graph.import_texture(
+                "SwapchainOutput",
+                swapchain.get_image(image_index),
+                swapchain.get_image_view(image_index),
+                swapchain.get_extent().width,
+                swapchain.get_extent().height,
+                static_cast<Format>(swapchain.get_format()),
+                VK_IMAGE_LAYOUT_UNDEFINED
+            );
+
+            // Pass 1: Scene Geometry Pass (renders into Swapchain with Dynamic Rendering)
+            graph.add_pass(
+                "SceneForwardPass",
+                [&](RenderPassBuilder& builder) {
+                    builder.set_color_attachment(
+                        0, 
+                        swapchain_rg, 
+                        VK_ATTACHMENT_LOAD_OP_CLEAR, 
+                        VK_ATTACHMENT_STORE_OP_STORE, 
+                        Vec4(0.06f, 0.08f, 0.12f, 1.0f)
+                    );
+                },
+                [&](RenderPassContext& ctx) {
+                    auto& cmd = ctx.get_command_buffer();
+                    cmd.set_viewport(Viewport{
+                        .x = 0.0f,
+                        .y = 0.0f,
+                        .width = static_cast<float>(swapchain.get_extent().width),
+                        .height = static_cast<float>(swapchain.get_extent().height),
+                        .min_depth = 0.0f,
+                        .max_depth = 1.0f
+                    });
+                    cmd.set_scissor(Rect2D{
+                        .offset_x = 0,
+                        .offset_y = 0,
+                        .width = swapchain.get_extent().width,
+                        .height = swapchain.get_extent().height
+                    });
+                    cmd.bind_pipeline(pipeline.get_pipeline());
+                    cmd.draw(3, 1, 0, 0);
+                }
+            );
+
+            // Pass 2: Present Barrier Pass
+            graph.add_pass(
+                "PresentTransitionPass",
+                [&](RenderPassBuilder& builder) {
+                    builder.read_texture(swapchain_rg, RGResourceAccess::Present);
+                },
+                [](RenderPassContext&) {
+                    // No CPU commands needed, RenderGraph handles the layout transition to PRESENT_SRC_KHR automatically!
+                }
+            );
+
+            // Execute RenderGraph
             auto& cmd = cmd_buffers[current_frame];
             cmd.reset();
             cmd.begin();
 
-            cmd.transition_image_layout(
-                swapchain.get_image(image_index),
-                VK_IMAGE_LAYOUT_UNDEFINED,
-                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                VK_IMAGE_ASPECT_COLOR_BIT
-            );
-
-            RenderingDesc render_desc{};
-            render_desc.render_area = {
-                .offset_x = 0,
-                .offset_y = 0,
-                .width = swapchain.get_extent().width,
-                .height = swapchain.get_extent().height
-            };
-            render_desc.color_attachments = {
-                ColorAttachmentDesc{
-                    .image_view = swapchain.get_image_view(image_index),
-                    .image_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                    .load_op = VK_ATTACHMENT_LOAD_OP_CLEAR,
-                    .store_op = VK_ATTACHMENT_STORE_OP_STORE,
-                    .clear_color = Vec4(0.08f, 0.09f, 0.12f, 1.0f)
-                }
-            };
-            render_desc.has_depth = false;
-
-            cmd.begin_rendering(render_desc);
-
-            cmd.set_viewport(Viewport{
-                .x = 0.0f,
-                .y = 0.0f,
-                .width = static_cast<float>(swapchain.get_extent().width),
-                .height = static_cast<float>(swapchain.get_extent().height),
-                .min_depth = 0.0f,
-                .max_depth = 1.0f
-            });
-            cmd.set_scissor(Rect2D{
-                .offset_x = 0,
-                .offset_y = 0,
-                .width = swapchain.get_extent().width,
-                .height = swapchain.get_extent().height
-            });
-
-            cmd.bind_pipeline(pipeline.get_pipeline());
-            cmd.draw(3, 1, 0, 0);
-
-            cmd.end_rendering();
-
-            cmd.transition_image_layout(
-                swapchain.get_image(image_index),
-                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-                VK_IMAGE_ASPECT_COLOR_BIT
-            );
+            graph.compile();
+            graph.execute(cmd);
 
             cmd.end();
 
+            // Submit
             VkSubmitInfo submit_info{};
             submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
@@ -362,6 +357,7 @@ int main(int argc, char* argv[]) {
 
             vkQueueSubmit(RhiContext::instance().get_graphics_queue(), 1, &submit_info, in_flight_fences[current_frame].get_handle());
 
+            // Present
             VkResult present_res = swapchain.present(
                 RhiContext::instance().get_graphics_queue(),
                 render_finished_semaphores[image_index].get_handle(),
@@ -376,7 +372,7 @@ int main(int argc, char* argv[]) {
             rendered_frames++;
 
             if (timer.fps() > 0) {
-                std::string title = std::format("Modern Game Engine [Phase 4 ECS & Scene] | GPU: {} | FPS: {} | Frames: {}", 
+                std::string title = std::format("Modern Game Engine [Phase 5 RenderGraph] | GPU: {} | FPS: {} | Frames: {}", 
                                                 caps.device_name, timer.fps(), rendered_frames);
                 window.set_title(title);
             }
@@ -407,6 +403,7 @@ int main(int argc, char* argv[]) {
         cmd_pool.destroy();
         swapchain.destroy();
 
+        BindlessHeap::instance().shutdown();
         RhiContext::instance().shutdown();
 
         window.destroy();
@@ -417,7 +414,7 @@ int main(int argc, char* argv[]) {
         Platform::shutdown();
     }
 
-    LOG_INFO("Engine", "Engine Phase 4 shutdown completed.");
+    LOG_INFO("Engine", "Engine Phase 5 shutdown completed.");
     GlobalAllocator::instance().dump_leaks();
 
     return 0;
