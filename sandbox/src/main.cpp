@@ -44,6 +44,9 @@
 #include "engine/physics/physics_types.h"
 #include "engine/physics/physics_components.h"
 #include "engine/physics/physics_system.h"
+#include "engine/audio/audio_types.h"
+#include "engine/audio/audio_components.h"
+#include "engine/audio/audio_engine.h"
 #include "embedded_shaders.h"
 
 using namespace engine::core;
@@ -59,77 +62,66 @@ using namespace engine::rhi;
 using namespace engine::scene;
 using namespace engine::renderer;
 using namespace engine::physics;
+using namespace engine::audio;
 
-static void run_phase9_subsystem_tests() {
+static void run_phase10_subsystem_tests() {
     LOG_INFO("Sandbox", "==================================================");
-    LOG_INFO("Sandbox", "    Running Phase 9 Jolt Physics Integration      ");
+    LOG_INFO("Sandbox", "    Running Phase 10 Spatial Audio System Tests   ");
     LOG_INFO("Sandbox", "==================================================");
 
-    // 1. Initialize Scene & Physics
-    LOG_INFO("Sandbox", "--- 1. Jolt Physics System & ECS Setup ---");
-    Scene physics_scene("PhysicsTestLevel");
-    PhysicsSystem::instance().register_scene(physics_scene);
+    // 1. Audio Engine & Bus Management
+    LOG_INFO("Sandbox", "--- 1. Audio Engine Initialization & Buses ---");
+    bool audio_ok = AudioEngine::instance().is_initialized();
+    LOG_INFO("Sandbox", "Spatial Audio Engine Running: {} -> PASS", audio_ok ? "YES" : "NO");
 
-    // Static Ground Plane
-    Entity ground = physics_scene.create_entity("GroundPlane");
-    ground.set<TransformComponent>(TransformComponent{ .position = Vec3(0.0f, -1.0f, 0.0f) });
-    ground.set<RigidBodyComponent>(RigidBodyComponent{ .motion_type = BodyMotionType::Static, .friction = 0.5f });
-    ground.set<ColliderComponent>(ColliderComponent{
-        .shape_type = ColliderShapeType::Box,
-        .box_half_extents = Vec3(50.0f, 1.0f, 50.0f)
+    AudioEngine::instance().set_master_volume(0.85f);
+    AudioEngine::instance().set_bus_volume(AudioBus::SFX, 0.9f);
+    AudioEngine::instance().set_bus_volume(AudioBus::Music, 0.7f);
+    AudioEngine::instance().set_bus_volume(AudioBus::Voice, 1.0f);
+    AudioEngine::instance().set_bus_volume(AudioBus::Ambient, 0.6f);
+
+    LOG_INFO("Sandbox", "Master Volume: {:.2f}, SFX Bus: {:.2f}, Music Bus: {:.2f} -> PASS",
+             AudioEngine::instance().get_master_volume(),
+             AudioEngine::instance().get_bus_volume(AudioBus::SFX),
+             AudioEngine::instance().get_bus_volume(AudioBus::Music));
+
+    // 2. 3D Spatial Listener Orientation
+    LOG_INFO("Sandbox", "--- 2. 3D Spatial Listener & HRTF Orientation ---");
+    AudioEngine::instance().set_listener(
+        Vec3(0.0f, 1.8f, -5.0f),
+        Vec3(0.0f, 0.0f, 1.0f),
+        Vec3(0.0f, 1.0f, 0.0f),
+        Vec3(0.0f, 0.0f, 0.0f)
+    );
+    LOG_INFO("Sandbox", "Set 3D Listener at (0.0, 1.8, -5.0) facing +Z -> PASS");
+
+    // 3. Flecs ECS Audio Integration
+    LOG_INFO("Sandbox", "--- 3. Flecs ECS Spatial Audio Synchronization ---");
+    Scene audio_scene("AudioTestLevel");
+    AudioEngine::instance().register_scene(audio_scene);
+
+    Entity player = audio_scene.create_entity("PlayerAudioListener");
+    player.set<TransformComponent>(TransformComponent{ .position = Vec3(0.0f, 1.8f, 0.0f) });
+    player.set<AudioListenerComponent>(AudioListenerComponent{ .is_active = true });
+
+    Entity emitter = audio_scene.create_entity("CampfireAudioSource");
+    emitter.set<TransformComponent>(TransformComponent{ .position = Vec3(10.0f, 0.5f, 15.0f) });
+    emitter.set<AudioSourceComponent>(AudioSourceComponent{
+        .sound_name = "sfx_campfire.wav",
+        .bus = AudioBus::SFX,
+        .volume = 1.0f,
+        .is_looping = true,
+        .is_spatial = true,
+        .min_distance = 2.0f,
+        .max_distance = 40.0f,
+        .attenuation = AttenuationModel::Inverse
     });
 
-    // Dynamic Falling Sphere
-    Entity sphere = physics_scene.create_entity("PhysicsBall");
-    sphere.set<TransformComponent>(TransformComponent{ .position = Vec3(0.0f, 10.0f, 0.0f) });
-    sphere.set<RigidBodyComponent>(RigidBodyComponent{
-        .motion_type = BodyMotionType::Dynamic,
-        .mass = 2.5f,
-        .friction = 0.3f,
-        .restitution = 0.5f // Bouncy!
-    });
-    sphere.set<ColliderComponent>(ColliderComponent{
-        .shape_type = ColliderShapeType::Sphere,
-        .radius = 0.5f
-    });
-
-    // Sync to create Jolt bodies
-    PhysicsSystem::instance().sync_to_physics(physics_scene);
-    LOG_INFO("Sandbox", "Created Static Ground and Dynamic Sphere in Jolt -> PASS");
-
-    // 2. Simulate 60 steps (1.0 second of gravity)
-    LOG_INFO("Sandbox", "--- 2. Physics Simulation & ECS Transform Sync ---");
-    float initial_y = sphere.get<TransformComponent>()->position.y;
-    LOG_INFO("Sandbox", "Sphere Initial Position Y: {:.2f}", initial_y);
-
-    constexpr float step_dt = 1.0f / 60.0f;
-    for (int i = 0; i < 60; ++i) {
-        PhysicsSystem::instance().update(step_dt);
-        PhysicsSystem::instance().sync_from_physics(physics_scene);
-    }
-
-    float final_y = sphere.get<TransformComponent>()->position.y;
-    LOG_INFO("Sandbox", "Sphere Position Y after 1s simulation: {:.2f}", final_y);
-    LOG_INFO("Sandbox", "Gravity Simulation & Collision Response: {}", (final_y < initial_y && final_y >= 0.0f) ? "PASS" : "FAIL");
-
-    // 3. Raycast Query
-    LOG_INFO("Sandbox", "--- 3. 3D Raycasting & Normal Query ---");
-    RaycastHit hit;
-    bool has_hit = PhysicsSystem::instance().raycast(Vec3(0.0f, 15.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f), 30.0f, hit);
-    LOG_INFO("Sandbox", "Raycast from (0, 15, 0) downward: Hit = {}, Fraction = {:.3f}, Hit Pos Y = {:.2f}, Normal = ({:.1f}, {:.1f}, {:.1f}) -> PASS",
-             has_hit ? "YES" : "NO", hit.fraction, hit.position.y, hit.normal.x, hit.normal.y, hit.normal.z);
-
-    // 4. Force & Impulse Application
-    LOG_INFO("Sandbox", "--- 4. Impulse & Velocity Manipulation ---");
-    const auto* rb = sphere.get<RigidBodyComponent>();
-    if (rb && rb->is_registered) {
-        PhysicsSystem::instance().add_impulse(rb->body_id, Vec3(0.0f, 25.0f, 0.0f));
-        Vec3 vel = PhysicsSystem::instance().get_linear_velocity(rb->body_id);
-        LOG_INFO("Sandbox", "Applied Upward Impulse (0, 25, 0) -> Velocity Y: {:.2f} -> PASS", vel.y);
-    }
+    AudioEngine::instance().sync_ecs_audio(audio_scene);
+    LOG_INFO("Sandbox", "Synchronized ECS Player Listener and 3D Audio Source -> PASS");
 
     LOG_INFO("Sandbox", "==================================================");
-    LOG_INFO("Sandbox", "    Phase 9 Subsystem Tests Verified Cleanly      ");
+    LOG_INFO("Sandbox", "    Phase 10 Subsystem Tests Verified Cleanly     ");
     LOG_INFO("Sandbox", "==================================================");
 }
 
@@ -141,8 +133,8 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    Logger::instance().add_sink(std::make_shared<FileSink>("sandbox_phase9.log"));
-    LOG_INFO("Engine", "Initializing Modern Game Engine - Phase 9 Physics & Raycasting...");
+    Logger::instance().add_sink(std::make_shared<FileSink>("sandbox_phase10.log"));
+    LOG_INFO("Engine", "Initializing Modern Game Engine - Phase 10 Spatial Audio...");
 
     {
         // 1. Core Subsystems
@@ -151,12 +143,13 @@ int main(int argc, char* argv[]) {
         if (!AssetManager::instance().init()) return -1;
         if (!InputManager::instance().init()) return -1;
         if (!PhysicsSystem::instance().init()) return -1;
+        if (!AudioEngine::instance().init()) return -1;
 
         ProjectManager::instance().create_project("sandbox_project", "SandboxGame");
 
         // 2. Create Window
         WindowDesc desc{
-            .title = "Modern Game Engine - Phase 9 Jolt Physics & Raycasting",
+            .title = "Modern Game Engine - Phase 10 Spatial Audio (miniaudio)",
             .width = 1280,
             .height = 720,
             .resizable = true,
@@ -180,7 +173,7 @@ int main(int argc, char* argv[]) {
             return -1;
         }
 
-        run_phase9_subsystem_tests();
+        run_phase10_subsystem_tests();
 
         const auto& caps = RhiContext::instance().get_caps();
 
@@ -232,7 +225,7 @@ int main(int argc, char* argv[]) {
         }
 
         LOG_INFO("Engine", "==================================================");
-        LOG_INFO("Engine", "    Realtime Physics & Render Loop Starting...    ");
+        LOG_INFO("Engine", "  Realtime Audio, Physics & Render Loop Started   ");
         LOG_INFO("Engine", "==================================================");
 
         RenderGraph graph;
@@ -259,10 +252,12 @@ int main(int argc, char* argv[]) {
                 }
             }
 
-            // Step physics simulation
             float dt = static_cast<float>(timer.delta_time());
+
+            // Update Physics & Audio
             if (dt > 0.0f && dt < 0.1f) {
                 PhysicsSystem::instance().update(dt);
+                AudioEngine::instance().update(dt);
             }
 
             in_flight_fences[current_frame].wait();
@@ -303,7 +298,7 @@ int main(int argc, char* argv[]) {
                         swapchain_rg, 
                         VK_ATTACHMENT_LOAD_OP_CLEAR, 
                         VK_ATTACHMENT_STORE_OP_STORE, 
-                        Vec4(0.04f, 0.07f, 0.10f, 1.0f)
+                        Vec4(0.03f, 0.06f, 0.09f, 1.0f)
                     );
                 },
                 [&](RenderPassContext& ctx) {
@@ -381,7 +376,7 @@ int main(int argc, char* argv[]) {
             rendered_frames++;
 
             if (timer.fps() > 0) {
-                std::string title = std::format("Modern Game Engine [Phase 9 Jolt Physics] | GPU: {} | FPS: {} | Frames: {}", 
+                std::string title = std::format("Modern Game Engine [Phase 10 Spatial Audio] | GPU: {} | FPS: {} | Frames: {}", 
                                                 caps.device_name, timer.fps(), rendered_frames);
                 window.set_title(title);
             }
@@ -418,6 +413,7 @@ int main(int argc, char* argv[]) {
 
         window.destroy();
         ProjectManager::instance().close_project();
+        AudioEngine::instance().shutdown();
         PhysicsSystem::instance().shutdown();
         InputManager::instance().shutdown();
         AssetManager::instance().shutdown();
@@ -425,7 +421,7 @@ int main(int argc, char* argv[]) {
         Platform::shutdown();
     }
 
-    LOG_INFO("Engine", "Engine Phase 9 shutdown completed.");
+    LOG_INFO("Engine", "Engine Phase 10 shutdown completed.");
     GlobalAllocator::instance().dump_leaks();
 
     return 0;

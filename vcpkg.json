@@ -12,6 +12,7 @@
     "cgltf",
     "tomlplusplus",
     "flecs",
-    "joltphysics"
+    "joltphysics",
+    "miniaudio"
   ]
 }
