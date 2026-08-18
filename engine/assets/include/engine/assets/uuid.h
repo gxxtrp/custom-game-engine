@@ -70,6 +70,7 @@ struct UUID {
     }
 
     constexpr bool is_valid() const { return high != 0 || low != 0; }
+    constexpr bool is_null() const { return high == 0 && low == 0; }
     constexpr bool operator==(const UUID& other) const { return high == other.high && low == other.low; }
     constexpr bool operator!=(const UUID& other) const { return !(*this == other); }
     constexpr bool operator<(const UUID& other) const {

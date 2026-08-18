@@ -30,6 +30,7 @@ struct AssetMeta {
     std::string virtual_path;
     std::string source_file;
     uint64_t imported_timestamp{0};
+    std::vector<UUID> dependencies;
 };
 
 enum class AssetStatus : uint8_t {
@@ -47,9 +48,18 @@ public:
     UUID get_uuid() const { return m_uuid; }
     AssetType get_type() const { return m_type; }
 
+    const std::vector<UUID>& get_dependencies() const { return m_dependencies; }
+    void add_dependency(UUID dep) {
+        if (!dep.is_null() && dep != m_uuid) {
+            m_dependencies.push_back(dep);
+        }
+    }
+    void set_dependencies(const std::vector<UUID>& deps) { m_dependencies = deps; }
+
 protected:
     UUID m_uuid;
     AssetType m_type{AssetType::Unknown};
+    std::vector<UUID> m_dependencies;
 };
 
 template<typename T>

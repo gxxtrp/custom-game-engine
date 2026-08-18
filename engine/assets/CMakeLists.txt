@@ -1,8 +1,10 @@
 add_library(engine_assets STATIC
     include/engine/assets/uuid.h
     include/engine/assets/asset.h
+    include/engine/assets/asset_dependency_graph.h
     include/engine/assets/asset_manager.h
     src/asset.cpp
+    src/asset_dependency_graph.cpp
     src/asset_manager.cpp
 )
 

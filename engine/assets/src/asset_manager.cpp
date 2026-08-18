@@ -93,11 +93,12 @@ AssetManager& AssetManager::instance() {
 }
 
 bool AssetManager::init() {
-    LOG_INFO("Assets", "AssetManager initialized");
+    LOG_INFO("Assets", "AssetManager initialized with AssetDependencyGraph");
     return true;
 }
 
 void AssetManager::shutdown() {
+    AssetDependencyGraph::instance().clear();
     UUIDRegistry::instance().clear();
     LOG_INFO("Assets", "AssetManager shutdown cleanly");
 }
@@ -112,13 +113,25 @@ bool AssetManager::save_meta_file(const AssetMeta& meta) {
     asset_tbl.insert("source", meta.source_file);
     asset_tbl.insert("imported_timestamp", static_cast<int64_t>(meta.imported_timestamp));
 
+    if (!meta.dependencies.empty()) {
+        toml::array deps_arr;
+        for (const auto& dep : meta.dependencies) {
+            deps_arr.push_back(dep.to_string());
+        }
+        asset_tbl.insert("dependencies", deps_arr);
+    }
+
     root.insert("asset", asset_tbl);
 
     std::stringstream ss;
     ss << root;
 
     std::string meta_path = meta.virtual_path + ".meta";
-    return vfs::VFS::instance().write_string(meta_path, ss.str());
+    bool written = vfs::VFS::instance().write_string(meta_path, ss.str());
+    if (written) {
+        AssetDependencyGraph::instance().set_dependencies(meta.uuid, meta.dependencies);
+    }
+    return written;
 }
 
 bool AssetManager::load_meta_file(std::string_view virtual_path_with_meta, AssetMeta& out_meta) {
@@ -143,6 +156,18 @@ bool AssetManager::load_meta_file(std::string_view virtual_path_with_meta, Asset
                 out_meta.imported_timestamp = static_cast<uint64_t>(ts->get());
             }
 
+            out_meta.dependencies.clear();
+            if (auto* deps = (*asset)["dependencies"].as_array()) {
+                for (auto&& node : *deps) {
+                    if (auto* str = node.as_string()) {
+                        UUID d = UUID::from_string(str->get());
+                        if (d.is_valid()) {
+                            out_meta.dependencies.push_back(d);
+                        }
+                    }
+                }
+            }
+
             // Path is the meta path without the .meta suffix
             std::string meta_p = vfs::VFS::normalize_path(virtual_path_with_meta);
             if (meta_p.ends_with(".meta")) {
@@ -152,6 +177,7 @@ bool AssetManager::load_meta_file(std::string_view virtual_path_with_meta, Asset
             }
 
             UUIDRegistry::instance().register_mapping(out_meta.uuid, out_meta.virtual_path);
+            AssetDependencyGraph::instance().set_dependencies(out_meta.uuid, out_meta.dependencies);
             return true;
         }
     } catch (const toml::parse_error& err) {
@@ -175,12 +201,46 @@ AssetMeta AssetManager::create_or_get_meta(std::string_view virtual_path, AssetT
     meta.virtual_path = vfs::VFS::normalize_path(virtual_path);
     meta.source_file = "";
     meta.imported_timestamp = core::Clock::get_time_nanoseconds();
+    meta.dependencies = {};
 
     save_meta_file(meta);
     UUIDRegistry::instance().register_mapping(meta.uuid, meta.virtual_path);
+    AssetDependencyGraph::instance().set_dependencies(meta.uuid, meta.dependencies);
 
     LOG_INFO("Assets", "Created new asset metadata for '{}' (UUID: {})", meta.virtual_path, meta.uuid.to_string());
     return meta;
+}
+
+void AssetManager::register_dependency(UUID parent, UUID child) {
+    AssetDependencyGraph::instance().add_dependency(parent, child);
+}
+
+void AssetManager::unregister_dependency(UUID parent, UUID child) {
+    AssetDependencyGraph::instance().remove_dependency(parent, child);
+}
+
+void AssetManager::set_dependencies(UUID parent, const std::vector<UUID>& children) {
+    AssetDependencyGraph::instance().set_dependencies(parent, children);
+}
+
+std::vector<UUID> AssetManager::get_dependencies(UUID parent) const {
+    return AssetDependencyGraph::instance().get_direct_dependencies(parent);
+}
+
+std::vector<UUID> AssetManager::get_dependents(UUID child) const {
+    return AssetDependencyGraph::instance().get_direct_dependents(child);
+}
+
+bool AssetManager::get_load_order(UUID root_asset, std::vector<UUID>& out_order, bool& out_has_cycle) const {
+    return AssetDependencyGraph::instance().get_topological_load_order(root_asset, out_order, out_has_cycle);
+}
+
+void AssetManager::get_transitive_dependents(UUID asset, std::unordered_set<UUID>& out_dependents) const {
+    AssetDependencyGraph::instance().get_all_transitive_dependents(asset, out_dependents);
+}
+
+void AssetManager::get_bundle_dependencies(const std::vector<UUID>& root_assets, std::unordered_set<UUID>& out_all_assets) const {
+    AssetDependencyGraph::instance().get_bundle_dependencies(root_assets, out_all_assets);
 }
 
 } // namespace engine::assets

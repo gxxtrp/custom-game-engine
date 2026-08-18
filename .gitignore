@@ -36,6 +36,9 @@ CMakeUserPresets.json
 .ninja_deps
 build.ninja
 
+# Testing Project
+*sandbox*
+
 # ------------------------------------------------------------------------------
 # Compiled Binaries, Objects & Libraries
 # ------------------------------------------------------------------------------

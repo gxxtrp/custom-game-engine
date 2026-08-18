@@ -3,9 +3,12 @@
 #include "engine/core/config.h"
 #include "engine/assets/uuid.h"
 #include "engine/assets/asset.h"
+#include "engine/assets/asset_dependency_graph.h"
 #include "engine/vfs/vfs.h"
 #include <unordered_map>
 #include <shared_mutex>
+#include <vector>
+#include <unordered_set>
 
 namespace engine::assets {
 
@@ -51,6 +54,17 @@ public:
     UUID get_uuid_for_path(std::string_view virtual_path) const {
         return UUIDRegistry::instance().find_uuid_by_path(virtual_path);
     }
+
+    // Asset Dependencies System
+    void register_dependency(UUID parent, UUID child);
+    void unregister_dependency(UUID parent, UUID child);
+    void set_dependencies(UUID parent, const std::vector<UUID>& children);
+    std::vector<UUID> get_dependencies(UUID parent) const;
+    std::vector<UUID> get_dependents(UUID child) const;
+
+    bool get_load_order(UUID root_asset, std::vector<UUID>& out_order, bool& out_has_cycle) const;
+    void get_transitive_dependents(UUID asset, std::unordered_set<UUID>& out_dependents) const;
+    void get_bundle_dependencies(const std::vector<UUID>& root_assets, std::unordered_set<UUID>& out_all_assets) const;
 
 private:
     AssetManager() = default;

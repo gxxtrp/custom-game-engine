@@ -40,10 +40,17 @@ This document provides technical details for every runtime subsystem in the engi
 
 ---
 
-## 6. Asset Management & Project (`engine/assets`, `engine/project`)
-* 128-bit RFC 4122 UUID asset identification.
-* Manifest-based project directory loader (`project.toml`) with automatic VFS mount discovery.
-* glTF 2.0 asset importer (`engine/importer`) via `cgltf`.
+## 6. Asset Management & Dependencies System (`engine/assets`, `engine/project`)
+* **128-bit RFC 4122 UUID Identification**: Persistent asset references across scenes, materials, and prefabs.
+* **Asset Dependency Graph (`AssetDependencyGraph`)**:
+  * Forward and reverse dependency DAG tracking (`parent -> children` and `child -> parents`).
+  * **Topological Load Order**: Discovers recursive dependencies and sorts in leaf-first load order.
+  * **Cycle Detection**: DFS-based circular dependency detection.
+  * **Cascading Transitive Invalidation**: Identifies all upstream dependents when a texture/shader is modified for live hot-reloading.
+  * **Bundle Dependency Collector**: Traverses transitive dependencies for PAK archiving.
+* **Asset Metadata (`AssetMeta`)**: `.meta` TOML sidecar format storing UUID, AssetType, virtual path, import timestamps, and explicit dependency UUID arrays.
+* **glTF 2.0 Asset Importer (`engine/importer`)**: Model, mesh, node hierarchy, and material loader via `cgltf`.
+* **Project Manifest (`engine/project`)**: `project.toml` environment loader with automatic VFS mount discovery.
 
 ---
 
