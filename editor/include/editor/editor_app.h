@@ -5,6 +5,7 @@
 #include "editor/outliner_panel.h"
 #include "editor/inspector_panel.h"
 #include "editor/scene_viewport.h"
+#include "editor/editor_state.h"
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <ImGuizmo.h>
@@ -17,13 +18,6 @@
 #include <chrono>
 
 namespace editor {
-
-enum class EditorMode {
-    Edit,
-    Play,
-    Simulate,
-    Paused
-};
 
 struct EditorConsoleEntry {
     engine::core::LogLevel level{engine::core::LogLevel::Info};
@@ -71,7 +65,7 @@ public:
     bool is_running() const;
     void request_exit();
 
-    EditorMode get_mode() const { return m_mode; }
+    EditorMode get_mode() const;
     void set_mode(EditorMode mode);
 
     engine::scene::Scene& get_active_scene() { return m_active_scene; }
@@ -80,6 +74,7 @@ public:
     OutlinerPanel& get_outliner_panel() { return m_outliner_panel; }
     InspectorPanel& get_inspector_panel() { return m_inspector_panel; }
     SceneViewport& get_viewport() { return m_viewport; }
+    EditorStateManager& get_state_manager() { return m_state_manager; }
 
 private:
     EditorApp();
@@ -142,7 +137,6 @@ private:
     VkDescriptorPool m_imgui_descriptor_pool{VK_NULL_HANDLE};
     std::shared_ptr<EditorConsoleSink> m_console_sink;
 
-    EditorMode m_mode{EditorMode::Edit};
     uint32_t m_current_frame{0};
     uint32_t m_rendered_frames{0};
     bool m_initialized{false};
@@ -163,6 +157,7 @@ private:
     bool m_show_imgui_demo{false};
 
     // Subsystem Panels & Context
+    EditorStateManager m_state_manager;
     SelectionContext m_selection_context;
     OutlinerPanel m_outliner_panel;
     InspectorPanel m_inspector_panel;

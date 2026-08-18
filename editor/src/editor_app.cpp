@@ -331,12 +331,25 @@ void EditorApp::request_exit() {
     m_window.set_should_close(true);
 }
 
+EditorMode EditorApp::get_mode() const {
+    return m_state_manager.get_mode();
+}
+
 void EditorApp::set_mode(EditorMode mode) {
-    if (m_mode == mode) return;
+    if (m_state_manager.get_mode() == mode) return;
 
     LOG_INFO("Editor", "Editor Mode Transition: {} -> {}", 
-             static_cast<int>(m_mode), static_cast<int>(mode));
-    m_mode = mode;
+             static_cast<int>(m_state_manager.get_mode()), static_cast<int>(mode));
+
+    if (mode == EditorMode::Play) {
+        m_state_manager.start_play(m_active_scene, m_selection_context);
+    } else if (mode == EditorMode::Simulate) {
+        m_state_manager.start_simulate(m_active_scene, m_selection_context);
+    } else if (mode == EditorMode::Paused) {
+        m_state_manager.pause();
+    } else if (mode == EditorMode::Edit) {
+        m_state_manager.stop(m_active_scene, m_selection_context);
+    }
 }
 
 void EditorApp::create_primitive_entity(std::string_view type) {
@@ -398,6 +411,9 @@ void EditorApp::create_primitive_entity(std::string_view type) {
 }
 
 void EditorApp::new_scene() {
+    if (!m_state_manager.is_editing()) {
+        set_mode(EditorMode::Edit);
+    }
     m_active_scene.clear();
     m_selection_context.clear();
     m_current_scene_path = "/maps/untitled.map";
@@ -405,6 +421,9 @@ void EditorApp::new_scene() {
 }
 
 void EditorApp::open_scene(const std::string& path) {
+    if (!m_state_manager.is_editing()) {
+        set_mode(EditorMode::Edit);
+    }
     m_current_scene_path = path;
     LOG_INFO("Editor", "Opened scene: {}", path);
 }
@@ -729,12 +748,12 @@ void EditorApp::render_toolbar() {
         ImGui::SameLine(ImGui::GetCursorPosX() + (avail_w - center_group_w) * 0.5f);
 
         // Play Button
-        bool is_playing = (m_mode == EditorMode::Play);
+        bool is_playing = m_state_manager.is_playing();
         if (is_playing) {
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.20f, 0.70f, 0.35f, 1.0f));
         }
         if (ImGui::Button(" > Play ")) {
-            set_mode(EditorMode::Play);
+            set_mode(is_playing ? EditorMode::Edit : EditorMode::Play);
         }
         if (is_playing) {
             ImGui::PopStyleColor();
@@ -743,12 +762,16 @@ void EditorApp::render_toolbar() {
         ImGui::SameLine();
 
         // Pause Button
-        bool is_paused = (m_mode == EditorMode::Paused);
+        bool is_paused = m_state_manager.is_paused();
         if (is_paused) {
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.85f, 0.65f, 0.15f, 1.0f));
         }
         if (ImGui::Button(" || Pause ")) {
-            set_mode(EditorMode::Paused);
+            if (is_paused) {
+                m_state_manager.resume();
+            } else {
+                m_state_manager.pause();
+            }
         }
         if (is_paused) {
             ImGui::PopStyleColor();
@@ -765,21 +788,18 @@ void EditorApp::render_toolbar() {
 
         // Step Frame Button
         if (ImGui::Button(" >| Step ")) {
-            if (m_mode == EditorMode::Edit || m_mode == EditorMode::Paused) {
-                m_active_scene.update(1.0f / 60.0f);
-                engine::physics::PhysicsSystem::instance().update(1.0f / 60.0f);
-            }
+            m_state_manager.step_frame(m_active_scene, 1.0f / 60.0f);
         }
 
         ImGui::SameLine();
 
         // Simulate Button
-        bool is_simulating = (m_mode == EditorMode::Simulate);
+        bool is_simulating = m_state_manager.is_simulating();
         if (is_simulating) {
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.20f, 0.65f, 0.85f, 1.0f));
         }
         if (ImGui::Button(" * Simulate ")) {
-            set_mode(EditorMode::Simulate);
+            set_mode(is_simulating ? EditorMode::Edit : EditorMode::Simulate);
         }
         if (is_simulating) {
             ImGui::PopStyleColor();
@@ -821,13 +841,14 @@ void EditorApp::render_status_bar() {
         ImGui::SameLine(0, 16.0f);
         ImVec4 mode_color = ImVec4(0.5f, 0.55f, 0.65f, 1.0f);
         const char* mode_text = "[EDIT MODE]";
-        if (m_mode == EditorMode::Play) {
+        EditorMode current_mode = m_state_manager.get_mode();
+        if (current_mode == EditorMode::Play) {
             mode_color = ImVec4(0.25f, 0.85f, 0.40f, 1.0f);
             mode_text = "[PLAYING]";
-        } else if (m_mode == EditorMode::Paused) {
+        } else if (current_mode == EditorMode::Paused) {
             mode_color = ImVec4(0.95f, 0.75f, 0.20f, 1.0f);
             mode_text = "[PAUSED]";
-        } else if (m_mode == EditorMode::Simulate) {
+        } else if (current_mode == EditorMode::Simulate) {
             mode_color = ImVec4(0.30f, 0.75f, 0.95f, 1.0f);
             mode_text = "[SIMULATING]";
         }
@@ -1182,15 +1203,8 @@ void EditorApp::step() {
 
     float dt = static_cast<float>(m_timer.delta_time());
 
-    // 2. Simulation Tick (if Play or Simulate)
-    if (m_mode == EditorMode::Play || m_mode == EditorMode::Simulate) {
-        if (dt > 0.0f && dt < 0.1f) {
-            engine::physics::PhysicsSystem::instance().update(dt);
-            engine::audio::AudioEngine::instance().update(dt);
-            engine::scripting::ScriptEngine::instance().sync_ecs_scripts(m_active_scene, dt);
-            m_active_scene.update(dt);
-        }
-    }
+    // 2. Simulation Tick via EditorStateManager
+    m_state_manager.update(m_active_scene, dt);
 
     // 3. ImGui New Frame & DockSpace
     ImGui_ImplVulkan_NewFrame();
@@ -1389,6 +1403,7 @@ void EditorApp::shutdown() {
     m_frag_shader.destroy();
 
     engine::core::Platform::set_raw_event_callback(nullptr);
+    m_viewport.destroy();
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplSDL3_Shutdown();
     ImGui::DestroyContext();

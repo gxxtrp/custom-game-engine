@@ -25,6 +25,7 @@ public:
     SceneViewport();
     ~SceneViewport();
 
+    void destroy();
     void set_texture(VkSampler sampler, VkImageView image_view, VkImageLayout layout);
     void render(engine::scene::Scene& scene, SelectionContext& selection, float dt, bool* is_open = nullptr);
 

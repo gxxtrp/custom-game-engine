@@ -48,8 +48,14 @@ static bool ray_intersects_aabb(const engine::core::Ray& ray, const engine::core
 SceneViewport::SceneViewport() = default;
 
 SceneViewport::~SceneViewport() {
+    destroy();
+}
+
+void SceneViewport::destroy() {
     if (m_texture_descriptor != VK_NULL_HANDLE) {
-        ImGui_ImplVulkan_RemoveTexture(m_texture_descriptor);
+        if (ImGui::GetCurrentContext() != nullptr) {
+            ImGui_ImplVulkan_RemoveTexture(m_texture_descriptor);
+        }
         m_texture_descriptor = VK_NULL_HANDLE;
     }
 }

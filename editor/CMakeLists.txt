@@ -5,6 +5,7 @@ add_executable(editor
     src/outliner_panel.cpp
     src/inspector_panel.cpp
     src/scene_viewport.cpp
+    src/editor_state.cpp
 )
 
 target_include_directories(editor PRIVATE
