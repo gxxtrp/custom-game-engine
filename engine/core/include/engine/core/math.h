@@ -220,6 +220,7 @@ struct alignas(16) Mat4 {
 
     Mat4 transposed() const;
     Mat4 inverted() const;
+    void decompose(Vec3& out_pos, Quat& out_rot, Vec3& out_scale) const;
 
     static Mat4 translation(const Vec3& pos);
     static Mat4 scaling(const Vec3& scale);
@@ -243,11 +244,12 @@ struct alignas(16) Quat {
 
     ENGINE_FORCE_INLINE Quat() : simd(_mm_setr_ps(0, 0, 0, 1)) {}
     ENGINE_FORCE_INLINE Quat(float x_, float y_, float z_, float w_) : simd(_mm_setr_ps(x_, y_, z_, w_)) {}
-    ENGINE_FORCE_INLINE Quat(__m128 s) : simd(s) {}
+    ENGINE_FORCE_INLINE explicit Quat(__m128 s) : simd(s) {}
 
-    static Quat identity() { return Quat(0, 0, 0, 1); }
+    static ENGINE_FORCE_INLINE Quat identity() { return Quat(0.0f, 0.0f, 0.0f, 1.0f); }
     static Quat from_axis_angle(const Vec3& axis, float rad);
     static Quat from_euler(float pitch_rad, float yaw_rad, float roll_rad);
+    static Quat from_mat4(const Mat4& m);
 
     ENGINE_FORCE_INLINE Quat operator*(const Quat& rhs) const {
         return Quat(

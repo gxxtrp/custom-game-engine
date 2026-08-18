@@ -7,6 +7,7 @@
 #include "engine/core/log.h"
 #include <imgui_impl_sdl3.h>
 #include <imgui_impl_vulkan.h>
+#include <ImGuizmo.h>
 
 namespace engine::ui {
 
@@ -152,7 +153,7 @@ bool EditorUI::init(core::Window& window, rhi::Format color_format) {
     m_profiler_panel = std::make_unique<ProfilerPanel>();
 
     m_initialized = true;
-    LOG_INFO("UI", "Initialized Modern ImGui Editor UI (Docking & Dynamic Rendering)");
+    LOG_INFO("UI", "Initialized Modern ImGui Editor UI (Docking, Viewport & ImGuizmo)");
     return true;
 }
 
@@ -186,7 +187,6 @@ void EditorUI::shutdown() {
 }
 
 void EditorUI::process_event(const core::PlatformEvent& /*event*/) {
-    // SDL3 events are processed automatically via SDL event polling hook or platform adapter
 }
 
 void EditorUI::begin_frame() {
@@ -195,6 +195,7 @@ void EditorUI::begin_frame() {
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
+    ImGuizmo::BeginFrame();
 
     // Editor Dockspace
     ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport());
@@ -214,13 +215,22 @@ void EditorUI::render_panels(scene::Scene& active_scene, float dt, uint32_t fps)
             if (ImGui::MenuItem("Preferences")) {}
             ImGui::EndMenu();
         }
-        if (ImGui::BeginMenu("View")) {
+        if (ImGui::BeginMenu("Gizmo")) {
+            if (ImGui::MenuItem("Translate [W]")) {
+                if (m_viewport_panel) m_viewport_panel->set_gizmo_operation(GizmoOperation::Translate);
+            }
+            if (ImGui::MenuItem("Rotate [E]")) {
+                if (m_viewport_panel) m_viewport_panel->set_gizmo_operation(GizmoOperation::Rotate);
+            }
+            if (ImGui::MenuItem("Scale [R]")) {
+                if (m_viewport_panel) m_viewport_panel->set_gizmo_operation(GizmoOperation::Scale);
+            }
             ImGui::EndMenu();
         }
         ImGui::EndMainMenuBar();
     }
 
-    if (m_viewport_panel) m_viewport_panel->render();
+    if (m_viewport_panel) m_viewport_panel->render(&active_scene, dt);
     if (m_hierarchy_panel) m_hierarchy_panel->render(active_scene);
     if (m_inspector_panel) m_inspector_panel->render(active_scene);
     if (m_content_browser_panel) m_content_browser_panel->render();

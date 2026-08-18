@@ -461,4 +461,64 @@ bool Frustum::intersects_sphere(const Vec3& center, float radius) const {
     return true;
 }
 
+Quat Quat::from_mat4(const Mat4& m) {
+    float tr = m.cols[0].x + m.cols[1].y + m.cols[2].z;
+    if (tr > 0.0f) {
+        float s = std::sqrt(tr + 1.0f) * 2.0f; // s = 4 * qw
+        return Quat(
+            (m.cols[1].z - m.cols[2].y) / s,
+            (m.cols[2].x - m.cols[0].z) / s,
+            (m.cols[0].y - m.cols[1].x) / s,
+            0.25f * s
+        );
+    } else if ((m.cols[0].x > m.cols[1].y) && (m.cols[0].x > m.cols[2].z)) {
+        float s = std::sqrt(1.0f + m.cols[0].x - m.cols[1].y - m.cols[2].z) * 2.0f; // s = 4 * qx
+        return Quat(
+            0.25f * s,
+            (m.cols[0].y + m.cols[1].x) / s,
+            (m.cols[0].z + m.cols[2].x) / s,
+            (m.cols[1].z - m.cols[2].y) / s
+        );
+    } else if (m.cols[1].y > m.cols[2].z) {
+        float s = std::sqrt(1.0f + m.cols[1].y - m.cols[0].x - m.cols[2].z) * 2.0f; // s = 4 * qy
+        return Quat(
+            (m.cols[0].y + m.cols[1].x) / s,
+            0.25f * s,
+            (m.cols[1].z + m.cols[2].y) / s,
+            (m.cols[2].x - m.cols[0].z) / s
+        );
+    } else {
+        float s = std::sqrt(1.0f + m.cols[2].z - m.cols[0].x - m.cols[1].y) * 2.0f; // s = 4 * qz
+        return Quat(
+            (m.cols[0].z + m.cols[2].x) / s,
+            (m.cols[1].z + m.cols[2].y) / s,
+            0.25f * s,
+            (m.cols[0].y - m.cols[1].x) / s
+        );
+    }
+}
+
+void Mat4::decompose(Vec3& out_pos, Quat& out_rot, Vec3& out_scale) const {
+    out_pos = Vec3(cols[3].x, cols[3].y, cols[3].z);
+
+    Vec3 c0(cols[0].x, cols[0].y, cols[0].z);
+    Vec3 c1(cols[1].x, cols[1].y, cols[1].z);
+    Vec3 c2(cols[2].x, cols[2].y, cols[2].z);
+
+    out_scale.x = c0.length();
+    out_scale.y = c1.length();
+    out_scale.z = c2.length();
+
+    if (out_scale.x > 0.0f) c0 = c0 / out_scale.x;
+    if (out_scale.y > 0.0f) c1 = c1 / out_scale.y;
+    if (out_scale.z > 0.0f) c2 = c2 / out_scale.z;
+
+    Mat4 rot_mat = Mat4::identity();
+    rot_mat.cols[0] = Vec4(c0, 0.0f);
+    rot_mat.cols[1] = Vec4(c1, 0.0f);
+    rot_mat.cols[2] = Vec4(c2, 0.0f);
+
+    out_rot = Quat::from_mat4(rot_mat).normalized();
+}
+
 } // namespace engine::core::math

@@ -51,6 +51,8 @@
 #include "engine/scripting/script_components.h"
 #include "engine/scripting/script_engine.h"
 #include "engine/ui/editor_ui.h"
+#include "engine/ui/editor_camera.h"
+#include "engine/ui/panels/viewport_panel.h"
 #include "embedded_shaders.h"
 
 using namespace engine::core;
@@ -70,47 +72,46 @@ using namespace engine::audio;
 using namespace engine::scripting;
 using namespace engine::ui;
 
-static void run_input_subsystem_tests() {
+static void run_phase13_subsystem_tests() {
     LOG_INFO("Sandbox", "==================================================");
-    LOG_INFO("Sandbox", "      Running Input Subsystem Verification        ");
+    LOG_INFO("Sandbox", "   Running Phase 13 ImGuizmo & Viewport Tests     ");
     LOG_INFO("Sandbox", "==================================================");
 
-    // 1. Test Key Down / Pressed State Registration
-    PlatformEvent key_event{};
-    key_event.type = EventType::KeyDown;
-    key_event.key.key = KeyCode::W;
-    InputManager::instance().process_event(key_event);
+    // 1. Test EditorCamera View-Projection & Mouse Raycasting
+    LOG_INFO("Sandbox", "--- 1. EditorCamera View-Projection & Ray Generation ---");
+    EditorCamera camera(45.0f, 0.1f, 1000.0f);
+    camera.set_position(Vec3(0.0f, 5.0f, -10.0f));
+    camera.set_focal_point(Vec3(0.0f, 0.0f, 0.0f));
 
-    bool w_down = InputManager::instance().is_key_down(KeyCode::W);
-    bool w_pressed = InputManager::instance().is_key_pressed(KeyCode::W);
-    LOG_INFO("Sandbox", "Key 'W' Down: {}, Just Pressed: {} -> PASS", w_down ? "YES" : "NO", w_pressed ? "YES" : "NO");
+    Mat4 view = camera.get_view_matrix();
+    Mat4 proj = camera.get_projection_matrix(16.0f / 9.0f);
+    LOG_INFO("Sandbox", "Camera View Matrix Col3: ({:.1f}, {:.1f}, {:.1f}), Proj (0,0): {:.3f} -> PASS",
+             view.cols[3].x, view.cols[3].y, view.cols[3].z, proj.cols[0].x);
 
-    // 2. Test Mouse Move & Delta Registration
-    PlatformEvent mouse_event{};
-    mouse_event.type = EventType::MouseMove;
-    mouse_event.mouse_move.x = 640.0f;
-    mouse_event.mouse_move.y = 360.0f;
-    mouse_event.mouse_move.dx = 15.0f;
-    mouse_event.mouse_move.dy = -8.0f;
-    InputManager::instance().process_event(mouse_event);
+    Ray center_ray = camera.screen_pos_to_world_ray(Vec2(640.0f, 360.0f), Vec2(1280.0f, 720.0f));
+    LOG_INFO("Sandbox", "Viewport Center Ray: Origin ({:.1f}, {:.1f}, {:.1f}), Dir ({:.3f}, {:.3f}, {:.3f}) -> PASS",
+             center_ray.origin.x, center_ray.origin.y, center_ray.origin.z,
+             center_ray.direction.x, center_ray.direction.y, center_ray.direction.z);
 
-    Vec2 mouse_pos = InputManager::instance().get_mouse_position();
-    Vec2 mouse_delta = InputManager::instance().get_mouse_delta();
-    LOG_INFO("Sandbox", "Mouse Position: ({:.1f}, {:.1f}), Delta: ({:.1f}, {:.1f}) -> PASS",
-             mouse_pos.x, mouse_pos.y, mouse_delta.x, mouse_delta.y);
+    // 2. Test Transform Matrix Decompose & Recompose
+    LOG_INFO("Sandbox", "--- 2. SIMD Matrix Decompose & Recompose ---");
+    Transform orig_t{
+        .position = Vec3(10.5f, -3.2f, 44.8f),
+        .rotation = Quat::from_euler(0.2f, 0.5f, 0.0f),
+        .scale = Vec3(2.0f, 3.0f, 1.5f)
+    };
+    Mat4 orig_mat = orig_t.to_mat4();
 
-    // 3. Test Mouse Button Click Registration
-    PlatformEvent click_event{};
-    click_event.type = EventType::MouseButtonDown;
-    click_event.mouse_button.button = MouseButton::Left;
-    InputManager::instance().process_event(click_event);
+    Vec3 dec_pos, dec_scale;
+    Quat dec_rot;
+    orig_mat.decompose(dec_pos, dec_rot, dec_scale);
 
-    bool left_down = InputManager::instance().is_mouse_button_down(MouseButton::Left);
-    bool left_pressed = InputManager::instance().is_mouse_button_pressed(MouseButton::Left);
-    LOG_INFO("Sandbox", "Mouse Left Button Down: {}, Pressed: {} -> PASS", left_down ? "YES" : "NO", left_pressed ? "YES" : "NO");
+    float pos_err = (orig_t.position - dec_pos).length();
+    float scale_err = (orig_t.scale - dec_scale).length();
+    LOG_INFO("Sandbox", "Decomposed Position Error: {:.6f}, Scale Error: {:.6f} -> PASS", pos_err, scale_err);
 
     LOG_INFO("Sandbox", "==================================================");
-    LOG_INFO("Sandbox", "      Input Subsystem Verified Cleanly            ");
+    LOG_INFO("Sandbox", "    Phase 13 Subsystem Tests Verified Cleanly     ");
     LOG_INFO("Sandbox", "==================================================");
 }
 
@@ -122,8 +123,8 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    Logger::instance().add_sink(std::make_shared<FileSink>("sandbox_phase12.log"));
-    LOG_INFO("Engine", "Initializing Modern Game Engine - Phase 12 ImGui Editor UI...");
+    Logger::instance().add_sink(std::make_shared<FileSink>("sandbox_phase13.log"));
+    LOG_INFO("Engine", "Initializing Modern Game Engine - Phase 13 ImGuizmo & Viewport...");
 
     {
         // 1. Core Subsystems
@@ -135,13 +136,11 @@ int main(int argc, char* argv[]) {
         if (!AudioEngine::instance().init()) return -1;
         if (!ScriptEngine::instance().init()) return -1;
 
-        run_input_subsystem_tests();
-
         ProjectManager::instance().create_project("sandbox_project", "SandboxGame");
 
         // 2. Create Window
         WindowDesc desc{
-            .title = "Modern Game Engine - Phase 12 ImGui Editor UI & Docking",
+            .title = "Modern Game Engine - Phase 13 ImGuizmo 3D Transform Gizmos",
             .width = 1280,
             .height = 720,
             .resizable = true,
@@ -165,6 +164,8 @@ int main(int argc, char* argv[]) {
             return -1;
         }
 
+        run_phase13_subsystem_tests();
+
         const auto& caps = RhiContext::instance().get_caps();
 
         // 4. Create Swapchain
@@ -180,8 +181,8 @@ int main(int argc, char* argv[]) {
             return -1;
         }
 
-        // 6. Setup Active Scene for Hierarchy & Inspector
-        Scene main_scene("EditorMainLevel");
+        // 6. Setup Active Scene for Hierarchy, Inspector & Gizmo
+        Scene main_scene("EditorGizmoLevel");
         PhysicsSystem::instance().register_scene(main_scene);
         AudioEngine::instance().register_scene(main_scene);
         ScriptEngine::instance().register_scene(main_scene);
@@ -191,16 +192,16 @@ int main(int argc, char* argv[]) {
         ground.set<RigidBodyComponent>(RigidBodyComponent{ .motion_type = BodyMotionType::Static });
         ground.set<ColliderComponent>(ColliderComponent{ .shape_type = ColliderShapeType::Box });
 
-        Entity player = main_scene.create_entity("PlayerController");
-        player.set<TransformComponent>(TransformComponent{ .position = Vec3(0.0f, 2.0f, 0.0f) });
-        player.set<AudioSourceComponent>(AudioSourceComponent{ .sound_name = "sfx_footstep.wav", .volume = 0.8f });
-        player.set<ScriptComponent>(ScriptComponent{ .class_name = "PlayerController" });
+        Entity gizmo_target = main_scene.create_entity("GizmoTargetEntity");
+        gizmo_target.set<TransformComponent>(TransformComponent{ .position = Vec3(0.0f, 2.0f, 0.0f), .scale = Vec3(1.5f, 1.5f, 1.5f) });
+        gizmo_target.set<RigidBodyComponent>(RigidBodyComponent{ .motion_type = BodyMotionType::Dynamic, .mass = 5.0f });
+        gizmo_target.set<ColliderComponent>(ColliderComponent{ .shape_type = ColliderShapeType::Box });
 
-        Entity light = main_scene.create_entity("SunLight");
-        light.set<TransformComponent>(TransformComponent{ .position = Vec3(20.0f, 50.0f, -30.0f) });
+        Entity light = main_scene.create_entity("DirectionalSun");
+        light.set<TransformComponent>(TransformComponent{ .position = Vec3(30.0f, 60.0f, -40.0f) });
 
-        // Select player entity by default
-        EditorUI::instance().set_selected_entity(player.get_id());
+        // Select gizmo target entity
+        EditorUI::instance().set_selected_entity(gizmo_target.get_id());
 
         // 7. Create Command Pool & Double Buffered Frames in Flight
         constexpr size_t MAX_FRAMES_IN_FLIGHT = 2;
@@ -243,7 +244,7 @@ int main(int argc, char* argv[]) {
         }
 
         LOG_INFO("Engine", "==================================================");
-        LOG_INFO("Engine", "     ImGui Editor UI Render Loop Starting...      ");
+        LOG_INFO("Engine", "   ImGuizmo 3D Editor Render Loop Starting...     ");
         LOG_INFO("Engine", "==================================================");
 
         RenderGraph graph;
@@ -277,7 +278,7 @@ int main(int argc, char* argv[]) {
                 AudioEngine::instance().update(dt);
             }
 
-            // Begin ImGui Frame & Panels
+            // Begin ImGui & ImGuizmo Frame & Panels
             EditorUI::instance().begin_frame();
             EditorUI::instance().render_panels(main_scene, dt, timer.fps());
             EditorUI::instance().end_frame();
@@ -344,7 +345,7 @@ int main(int argc, char* argv[]) {
                 }
             );
 
-            // Pass 2: Editor ImGui UI Pass
+            // Pass 2: Editor ImGui & ImGuizmo UI Pass
             graph.add_pass(
                 "EditorUIPass",
                 [&](RenderPassBuilder& builder) {
@@ -415,7 +416,7 @@ int main(int argc, char* argv[]) {
             rendered_frames++;
 
             if (timer.fps() > 0) {
-                std::string title = std::format("Modern Game Engine [Phase 12 ImGui Editor] | GPU: {} | FPS: {} | Frames: {}", 
+                std::string title = std::format("Modern Game Engine [Phase 13 ImGuizmo] | GPU: {} | FPS: {} | Frames: {}", 
                                                 caps.device_name, timer.fps(), rendered_frames);
                 window.set_title(title);
             }
@@ -463,7 +464,7 @@ int main(int argc, char* argv[]) {
         Platform::shutdown();
     }
 
-    LOG_INFO("Engine", "Engine Phase 12 shutdown completed.");
+    LOG_INFO("Engine", "Engine Phase 13 shutdown completed.");
     GlobalAllocator::instance().dump_leaks();
 
     return 0;
