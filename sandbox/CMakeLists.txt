@@ -15,6 +15,7 @@ target_link_libraries(sandbox PRIVATE
     engine_rhi
     engine_scene
     engine_renderer
+    engine_physics
 )
 
 engine_target_compile_options(sandbox)

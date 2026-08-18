@@ -258,6 +258,13 @@ struct alignas(16) Quat {
         );
     }
 
+    ENGINE_FORCE_INLINE bool operator==(const Quat& rhs) const {
+        return x == rhs.x && y == rhs.y && z == rhs.z && w == rhs.w;
+    }
+    ENGINE_FORCE_INLINE bool operator!=(const Quat& rhs) const {
+        return !(*this == rhs);
+    }
+
     ENGINE_FORCE_INLINE Quat conjugate() const { return Quat(-x, -y, -z, w); }
     ENGINE_FORCE_INLINE float dot(const Quat& rhs) const {
         return x * rhs.x + y * rhs.y + z * rhs.z + w * rhs.w;

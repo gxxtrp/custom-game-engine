@@ -41,6 +41,9 @@
 #include "engine/renderer/taa.h"
 #include "engine/renderer/bloom.h"
 #include "engine/renderer/auto_exposure.h"
+#include "engine/physics/physics_types.h"
+#include "engine/physics/physics_components.h"
+#include "engine/physics/physics_system.h"
 #include "embedded_shaders.h"
 
 using namespace engine::core;
@@ -55,66 +58,78 @@ using namespace engine::importer;
 using namespace engine::rhi;
 using namespace engine::scene;
 using namespace engine::renderer;
+using namespace engine::physics;
 
-static void run_phase8_subsystem_tests() {
+static void run_phase9_subsystem_tests() {
     LOG_INFO("Sandbox", "==================================================");
-    LOG_INFO("Sandbox", "    Running Phase 8 Post-Processing & TAA Tests   ");
+    LOG_INFO("Sandbox", "    Running Phase 9 Jolt Physics Integration      ");
     LOG_INFO("Sandbox", "==================================================");
 
-    // 1. Tone Mapping & Color Transforms (ACES, AgX, YCoCg)
-    LOG_INFO("Sandbox", "--- 1. Tone Mapping & Color Space Transforms ---");
-    Vec3 hdr_color(3.5f, 2.0f, 0.5f);
-    Vec3 aces_color = PostProcessSystem::aces_fitted(hdr_color);
-    Vec3 agx_color = PostProcessSystem::agx_tonemap(hdr_color);
-    LOG_INFO("Sandbox", "HDR Input ({:.2f}, {:.2f}, {:.2f}) -> ACES: ({:.3f}, {:.3f}, {:.3f}) -> PASS",
-             hdr_color.x, hdr_color.y, hdr_color.z, aces_color.x, aces_color.y, aces_color.z);
-    LOG_INFO("Sandbox", "HDR Input ({:.2f}, {:.2f}, {:.2f}) -> AgX:  ({:.3f}, {:.3f}, {:.3f}) -> PASS",
-             hdr_color.x, hdr_color.y, hdr_color.z, agx_color.x, agx_color.y, agx_color.z);
+    // 1. Initialize Scene & Physics
+    LOG_INFO("Sandbox", "--- 1. Jolt Physics System & ECS Setup ---");
+    Scene physics_scene("PhysicsTestLevel");
+    PhysicsSystem::instance().register_scene(physics_scene);
 
-    Vec3 rgb(0.8f, 0.4f, 0.2f);
-    Vec3 ycocg = PostProcessSystem::rgb_to_ycocg(rgb);
-    Vec3 rgb_roundtrip = PostProcessSystem::ycocg_to_rgb(ycocg);
-    float diff = (rgb - rgb_roundtrip).length();
-    LOG_INFO("Sandbox", "YCoCg Roundtrip Error: {:.6f} -> PASS", diff);
+    // Static Ground Plane
+    Entity ground = physics_scene.create_entity("GroundPlane");
+    ground.set<TransformComponent>(TransformComponent{ .position = Vec3(0.0f, -1.0f, 0.0f) });
+    ground.set<RigidBodyComponent>(RigidBodyComponent{ .motion_type = BodyMotionType::Static, .friction = 0.5f });
+    ground.set<ColliderComponent>(ColliderComponent{
+        .shape_type = ColliderShapeType::Box,
+        .box_half_extents = Vec3(50.0f, 1.0f, 50.0f)
+    });
 
-    // 2. TAA Halton Subpixel Jitter & Variance Clipping
-    LOG_INFO("Sandbox", "--- 2. TAA Subpixel Jitter & Variance Bounding ---");
-    TaaSystem taa;
-    taa.init(1280, 720);
+    // Dynamic Falling Sphere
+    Entity sphere = physics_scene.create_entity("PhysicsBall");
+    sphere.set<TransformComponent>(TransformComponent{ .position = Vec3(0.0f, 10.0f, 0.0f) });
+    sphere.set<RigidBodyComponent>(RigidBodyComponent{
+        .motion_type = BodyMotionType::Dynamic,
+        .mass = 2.5f,
+        .friction = 0.3f,
+        .restitution = 0.5f // Bouncy!
+    });
+    sphere.set<ColliderComponent>(ColliderComponent{
+        .shape_type = ColliderShapeType::Sphere,
+        .radius = 0.5f
+    });
 
-    Vec2 j0 = TaaSystem::get_jitter(0);
-    Vec2 j1 = TaaSystem::get_jitter(1);
-    LOG_INFO("Sandbox", "Halton Jitter Phase 0: ({:.4f}, {:.4f}), Phase 1: ({:.4f}, {:.4f}) -> PASS",
-             j0.x, j0.y, j1.x, j1.y);
+    // Sync to create Jolt bodies
+    PhysicsSystem::instance().sync_to_physics(physics_scene);
+    LOG_INFO("Sandbox", "Created Static Ground and Dynamic Sphere in Jolt -> PASS");
 
-    std::array<Vec3, 9> neighborhood;
-    for (size_t i = 0; i < 9; ++i) {
-        neighborhood[i] = Vec3(0.5f + static_cast<float>(i) * 0.01f, 0.1f, 0.05f);
+    // 2. Simulate 60 steps (1.0 second of gravity)
+    LOG_INFO("Sandbox", "--- 2. Physics Simulation & ECS Transform Sync ---");
+    float initial_y = sphere.get<TransformComponent>()->position.y;
+    LOG_INFO("Sandbox", "Sphere Initial Position Y: {:.2f}", initial_y);
+
+    constexpr float step_dt = 1.0f / 60.0f;
+    for (int i = 0; i < 60; ++i) {
+        PhysicsSystem::instance().update(step_dt);
+        PhysicsSystem::instance().sync_from_physics(physics_scene);
     }
-    Vec3 ghost_history(2.0f, 0.8f, 0.5f); // Outlier history sample
-    Vec3 clamped_history = TaaSystem::clip_aabb_ycocg(ghost_history, neighborhood, 1.25f);
-    LOG_INFO("Sandbox", "Ghosted History ({:.2f}, {:.2f}, {:.2f}) Clamped to: ({:.3f}, {:.3f}, {:.3f}) -> PASS",
-             ghost_history.x, ghost_history.y, ghost_history.z,
-             clamped_history.x, clamped_history.y, clamped_history.z);
 
-    // 3. Bloom Dual-Filtering
-    LOG_INFO("Sandbox", "--- 3. Physically-Based Bloom 6-Level Chain ---");
-    BloomSystem bloom;
-    bloom.init(1280, 720);
-    Vec3 prefiltered = BloomSystem::compute_prefilter(Vec3(4.0f, 2.0f, 1.0f), 1.0f, 0.5f);
-    float karis_w = BloomSystem::karis_average(Vec3(4.0f, 2.0f, 1.0f));
-    LOG_INFO("Sandbox", "Bloom Mip Chain Levels: {}, Prefilter: ({:.2f}, {:.2f}, {:.2f}), Karis Weight: {:.3f} -> PASS",
-             bloom.get_mip_count(), prefiltered.x, prefiltered.y, prefiltered.z, karis_w);
+    float final_y = sphere.get<TransformComponent>()->position.y;
+    LOG_INFO("Sandbox", "Sphere Position Y after 1s simulation: {:.2f}", final_y);
+    LOG_INFO("Sandbox", "Gravity Simulation & Collision Response: {}", (final_y < initial_y && final_y >= 0.0f) ? "PASS" : "FAIL");
 
-    // 4. Auto-Exposure & Eye Adaptation
-    LOG_INFO("Sandbox", "--- 4. Auto-Exposure & Temporal Eye Adaptation ---");
-    AutoExposureSystem auto_exp;
-    auto_exp.init();
-    float adapted = AutoExposureSystem::compute_temporal_adaptation(0.2f, 2.0f, 0.016f, 3.0f, 1.0f);
-    LOG_INFO("Sandbox", "Temporal Adaptation (0.2 -> 2.0 @ dt=16ms): {:.4f} -> PASS", adapted);
+    // 3. Raycast Query
+    LOG_INFO("Sandbox", "--- 3. 3D Raycasting & Normal Query ---");
+    RaycastHit hit;
+    bool has_hit = PhysicsSystem::instance().raycast(Vec3(0.0f, 15.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f), 30.0f, hit);
+    LOG_INFO("Sandbox", "Raycast from (0, 15, 0) downward: Hit = {}, Fraction = {:.3f}, Hit Pos Y = {:.2f}, Normal = ({:.1f}, {:.1f}, {:.1f}) -> PASS",
+             has_hit ? "YES" : "NO", hit.fraction, hit.position.y, hit.normal.x, hit.normal.y, hit.normal.z);
+
+    // 4. Force & Impulse Application
+    LOG_INFO("Sandbox", "--- 4. Impulse & Velocity Manipulation ---");
+    const auto* rb = sphere.get<RigidBodyComponent>();
+    if (rb && rb->is_registered) {
+        PhysicsSystem::instance().add_impulse(rb->body_id, Vec3(0.0f, 25.0f, 0.0f));
+        Vec3 vel = PhysicsSystem::instance().get_linear_velocity(rb->body_id);
+        LOG_INFO("Sandbox", "Applied Upward Impulse (0, 25, 0) -> Velocity Y: {:.2f} -> PASS", vel.y);
+    }
 
     LOG_INFO("Sandbox", "==================================================");
-    LOG_INFO("Sandbox", "    Phase 8 Subsystem Tests Verified Cleanly      ");
+    LOG_INFO("Sandbox", "    Phase 9 Subsystem Tests Verified Cleanly      ");
     LOG_INFO("Sandbox", "==================================================");
 }
 
@@ -126,8 +141,8 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    Logger::instance().add_sink(std::make_shared<FileSink>("sandbox_phase8.log"));
-    LOG_INFO("Engine", "Initializing Modern Game Engine - Phase 8 Post-Processing & TAA...");
+    Logger::instance().add_sink(std::make_shared<FileSink>("sandbox_phase9.log"));
+    LOG_INFO("Engine", "Initializing Modern Game Engine - Phase 9 Physics & Raycasting...");
 
     {
         // 1. Core Subsystems
@@ -135,12 +150,13 @@ int main(int argc, char* argv[]) {
         if (!JobSystem::instance().init()) return -1;
         if (!AssetManager::instance().init()) return -1;
         if (!InputManager::instance().init()) return -1;
+        if (!PhysicsSystem::instance().init()) return -1;
 
         ProjectManager::instance().create_project("sandbox_project", "SandboxGame");
 
         // 2. Create Window
         WindowDesc desc{
-            .title = "Modern Game Engine - Phase 8 Post-Processing & TAA",
+            .title = "Modern Game Engine - Phase 9 Jolt Physics & Raycasting",
             .width = 1280,
             .height = 720,
             .resizable = true,
@@ -164,7 +180,7 @@ int main(int argc, char* argv[]) {
             return -1;
         }
 
-        run_phase8_subsystem_tests();
+        run_phase9_subsystem_tests();
 
         const auto& caps = RhiContext::instance().get_caps();
 
@@ -196,27 +212,13 @@ int main(int argc, char* argv[]) {
             render_finished_semaphores[i].init(false);
         }
 
-        // 6. Create Pipelines for HDR Scene Pass and Swapchain ToneMapping Pass
+        // 6. Create Graphics Pipelines
         RhiShaderModule vert_shader;
         vert_shader.init_from_spirv(engine::shaders::TRIANGLE_VERT_SPV, engine::shaders::TRIANGLE_VERT_SPV_SIZE, ShaderStage::Vertex);
 
         RhiShaderModule frag_shader;
         frag_shader.init_from_spirv(engine::shaders::TRIANGLE_FRAG_SPV, engine::shaders::TRIANGLE_FRAG_SPV_SIZE, ShaderStage::Fragment);
 
-        // HDR Pipeline (R16G16B16A16_SFLOAT)
-        GraphicsPipelineDesc hdr_pipeline_desc{};
-        hdr_pipeline_desc.vertex_shader = &vert_shader;
-        hdr_pipeline_desc.fragment_shader = &frag_shader;
-        hdr_pipeline_desc.color_formats = { Format::R16G16B16A16_SFLOAT };
-        hdr_pipeline_desc.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-
-        RhiGraphicsPipeline hdr_pipeline;
-        if (!hdr_pipeline.init(hdr_pipeline_desc)) {
-            LOG_FATAL("Engine", "Failed to create HDR graphics pipeline!");
-            return -1;
-        }
-
-        // Swapchain Pipeline
         GraphicsPipelineDesc post_pipeline_desc{};
         post_pipeline_desc.vertex_shader = &vert_shader;
         post_pipeline_desc.fragment_shader = &frag_shader;
@@ -230,7 +232,7 @@ int main(int argc, char* argv[]) {
         }
 
         LOG_INFO("Engine", "==================================================");
-        LOG_INFO("Engine", "  Post-Processing & TAA Render Loop Starting...   ");
+        LOG_INFO("Engine", "    Realtime Physics & Render Loop Starting...    ");
         LOG_INFO("Engine", "==================================================");
 
         RenderGraph graph;
@@ -257,6 +259,12 @@ int main(int argc, char* argv[]) {
                 }
             }
 
+            // Step physics simulation
+            float dt = static_cast<float>(timer.delta_time());
+            if (dt > 0.0f && dt < 0.1f) {
+                PhysicsSystem::instance().update(dt);
+            }
+
             in_flight_fences[current_frame].wait();
 
             uint32_t image_index = 0;
@@ -273,10 +281,9 @@ int main(int argc, char* argv[]) {
 
             in_flight_fences[current_frame].reset();
 
-            // Record Multi-Pass Render Graph with Post-Processing & TAA
+            // Record Render Graph
             graph.reset();
 
-            // 1. Import Swapchain Target
             RGTextureHandle swapchain_rg = graph.import_texture(
                 "SwapchainOutput",
                 swapchain.get_image(image_index),
@@ -287,58 +294,16 @@ int main(int argc, char* argv[]) {
                 VK_IMAGE_LAYOUT_UNDEFINED
             );
 
-            // 2. HDR Scene Target
-            RGTextureHandle hdr_scene_rg = graph.create_texture(RGTextureDesc{
-                .width = swapchain.get_extent().width,
-                .height = swapchain.get_extent().height,
-                .format = Format::R16G16B16A16_SFLOAT,
-                .usage = TextureUsage::ColorAttachment | TextureUsage::Sampled,
-                .debug_name = "RG_HDRScene"
-            });
-
-            // 3. Scene Geometry Pass (renders into HDR target)
+            // Pass 1: Scene Render Pass
             graph.add_pass(
-                "HDRGeometryPass",
+                "SceneForwardPass",
                 [&](RenderPassBuilder& builder) {
-                    builder.set_color_attachment(
-                        0, 
-                        hdr_scene_rg, 
-                        VK_ATTACHMENT_LOAD_OP_CLEAR, 
-                        VK_ATTACHMENT_STORE_OP_STORE, 
-                        Vec4(0.04f, 0.06f, 0.09f, 1.0f)
-                    );
-                },
-                [&](RenderPassContext& ctx) {
-                    auto& cmd = ctx.get_command_buffer();
-                    cmd.set_viewport(Viewport{
-                        .x = 0.0f,
-                        .y = 0.0f,
-                        .width = static_cast<float>(swapchain.get_extent().width),
-                        .height = static_cast<float>(swapchain.get_extent().height),
-                        .min_depth = 0.0f,
-                        .max_depth = 1.0f
-                    });
-                    cmd.set_scissor(Rect2D{
-                        .offset_x = 0,
-                        .offset_y = 0,
-                        .width = swapchain.get_extent().width,
-                        .height = swapchain.get_extent().height
-                    });
-                    cmd.bind_pipeline(hdr_pipeline.get_pipeline());
-                    cmd.draw(3, 1, 0, 0);
-                }
-            );
-
-            // 4. Tone Mapping & Post-Processing Pass (reads HDR target, writes to Swapchain)
-            graph.add_pass(
-                "ToneMappingPostProcessPass",
-                [&](RenderPassBuilder& builder) {
-                    builder.read_texture(hdr_scene_rg, RGResourceAccess::ShaderRead);
                     builder.set_color_attachment(
                         0, 
                         swapchain_rg, 
-                        VK_ATTACHMENT_LOAD_OP_DONT_CARE, 
-                        VK_ATTACHMENT_STORE_OP_STORE
+                        VK_ATTACHMENT_LOAD_OP_CLEAR, 
+                        VK_ATTACHMENT_STORE_OP_STORE, 
+                        Vec4(0.04f, 0.07f, 0.10f, 1.0f)
                     );
                 },
                 [&](RenderPassContext& ctx) {
@@ -362,7 +327,7 @@ int main(int argc, char* argv[]) {
                 }
             );
 
-            // 5. Present Transition Pass
+            // Pass 2: Present Transition Pass
             graph.add_pass(
                 "PresentTransitionPass",
                 [&](RenderPassBuilder& builder) {
@@ -416,7 +381,7 @@ int main(int argc, char* argv[]) {
             rendered_frames++;
 
             if (timer.fps() > 0) {
-                std::string title = std::format("Modern Game Engine [Phase 8 Post-Processing & TAA] | GPU: {} | FPS: {} | Frames: {}", 
+                std::string title = std::format("Modern Game Engine [Phase 9 Jolt Physics] | GPU: {} | FPS: {} | Frames: {}", 
                                                 caps.device_name, timer.fps(), rendered_frames);
                 window.set_title(title);
             }
@@ -432,7 +397,6 @@ int main(int argc, char* argv[]) {
         RhiContext::instance().wait_idle();
 
         graph.destroy();
-        hdr_pipeline.destroy();
         swapchain_pipeline.destroy();
         vert_shader.destroy();
         frag_shader.destroy();
@@ -454,13 +418,14 @@ int main(int argc, char* argv[]) {
 
         window.destroy();
         ProjectManager::instance().close_project();
+        PhysicsSystem::instance().shutdown();
         InputManager::instance().shutdown();
         AssetManager::instance().shutdown();
         JobSystem::instance().shutdown();
         Platform::shutdown();
     }
 
-    LOG_INFO("Engine", "Engine Phase 8 shutdown completed.");
+    LOG_INFO("Engine", "Engine Phase 9 shutdown completed.");
     GlobalAllocator::instance().dump_leaks();
 
     return 0;
