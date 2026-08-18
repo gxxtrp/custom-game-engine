@@ -5,11 +5,21 @@ add_library(engine_renderer STATIC
     include/engine/renderer/mesh.h
     include/engine/renderer/material.h
     include/engine/renderer/gpu_scene.h
+    include/engine/renderer/lighting.h
+    include/engine/renderer/shadow_map.h
+    include/engine/renderer/volumetrics.h
+    include/engine/renderer/oit.h
+    include/engine/renderer/restir.h
     src/render_pass.cpp
     src/render_graph.cpp
     src/mesh.cpp
     src/material.cpp
     src/gpu_scene.cpp
+    src/lighting.cpp
+    src/shadow_map.cpp
+    src/volumetrics.cpp
+    src/oit.cpp
+    src/restir.cpp
 )
 
 target_include_directories(engine_renderer PUBLIC

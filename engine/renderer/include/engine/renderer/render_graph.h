@@ -15,7 +15,7 @@ namespace engine::renderer {
 
 struct RGTextureResource {
     RGTextureDesc desc;
-    std::unique_ptr<rhi::RhiTexture> physical_texture;
+    rhi::RhiTexture* physical_texture{nullptr};
     VkImage external_image{VK_NULL_HANDLE};
     VkImageView external_view{VK_NULL_HANDLE};
     VkImageLayout current_layout{VK_IMAGE_LAYOUT_UNDEFINED};
@@ -24,7 +24,7 @@ struct RGTextureResource {
 
 struct RGBufferResource {
     RGBufferDesc desc;
-    std::unique_ptr<rhi::RhiBuffer> physical_buffer;
+    rhi::RhiBuffer* physical_buffer{nullptr};
     VkBuffer external_buffer{VK_NULL_HANDLE};
     bool is_external{false};
 };
@@ -65,6 +65,7 @@ public:
     bool compile();
     void execute(rhi::RhiCommandBuffer& cmd);
     void reset();
+    void destroy();
 
     VkImageView get_texture_view(RGTextureHandle handle) const;
     VkImage get_texture_image(RGTextureHandle handle) const;

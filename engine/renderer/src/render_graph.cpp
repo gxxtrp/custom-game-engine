@@ -5,7 +5,13 @@
 namespace engine::renderer {
 
 RenderGraph::~RenderGraph() {
+    destroy();
+}
+
+void RenderGraph::destroy() {
     reset();
+    m_texture_pool.clear();
+    m_buffer_pool.clear();
 }
 
 RGTextureHandle RenderGraph::import_texture(std::string_view name, 
@@ -87,37 +93,70 @@ static VkImageLayout get_required_layout(RGResourceAccess access, rhi::Format fo
 }
 
 bool RenderGraph::compile() {
-    // 1. Allocate physical resources for transient textures
+    // 1. Allocate / reuse physical resources for transient textures from pool
+    size_t pool_tex_idx = 0;
     for (auto& res : m_textures) {
         if (!res.is_external && !res.physical_texture) {
-            rhi::TextureDesc tex_desc{};
-            tex_desc.width = res.desc.width;
-            tex_desc.height = res.desc.height;
-            tex_desc.format = res.desc.format;
-            tex_desc.usage = res.desc.usage;
-            tex_desc.debug_name = res.desc.debug_name;
+            // Find existing matching texture in pool
+            bool found = false;
+            while (pool_tex_idx < m_texture_pool.size()) {
+                const auto& pooled = m_texture_pool[pool_tex_idx++];
+                if (pooled->get_desc().width == res.desc.width &&
+                    pooled->get_desc().height == res.desc.height &&
+                    pooled->get_desc().format == res.desc.format) {
+                    res.physical_texture = pooled.get();
+                    found = true;
+                    break;
+                }
+            }
 
-            res.physical_texture = std::make_unique<rhi::RhiTexture>();
-            if (!res.physical_texture->init(tex_desc)) {
-                LOG_ERROR("RenderGraph", "Failed to allocate physical texture '{}'", res.desc.debug_name);
-                return false;
+            if (!found) {
+                rhi::TextureDesc tex_desc{};
+                tex_desc.width = res.desc.width;
+                tex_desc.height = res.desc.height;
+                tex_desc.format = res.desc.format;
+                tex_desc.usage = res.desc.usage;
+                tex_desc.debug_name = res.desc.debug_name;
+
+                auto new_tex = std::make_unique<rhi::RhiTexture>();
+                if (!new_tex->init(tex_desc)) {
+                    LOG_ERROR("RenderGraph", "Failed to allocate physical texture '{}'", res.desc.debug_name);
+                    return false;
+                }
+                res.physical_texture = new_tex.get();
+                m_texture_pool.push_back(std::move(new_tex));
             }
         }
     }
 
-    // 2. Allocate physical resources for transient buffers
+    // 2. Allocate / reuse physical resources for transient buffers from pool
+    size_t pool_buf_idx = 0;
     for (auto& res : m_buffers) {
         if (!res.is_external && !res.physical_buffer) {
-            rhi::BufferDesc buf_desc{};
-            buf_desc.size = res.desc.size;
-            buf_desc.usage = res.desc.usage;
-            buf_desc.memory_usage = res.desc.memory_usage;
-            buf_desc.debug_name = res.desc.debug_name;
+            bool found = false;
+            while (pool_buf_idx < m_buffer_pool.size()) {
+                const auto& pooled = m_buffer_pool[pool_buf_idx++];
+                if (pooled->get_desc().size >= res.desc.size) {
+                    res.physical_buffer = pooled.get();
+                    found = true;
+                    break;
+                }
+            }
 
-            res.physical_buffer = std::make_unique<rhi::RhiBuffer>();
-            if (!res.physical_buffer->init(buf_desc)) {
-                LOG_ERROR("RenderGraph", "Failed to allocate physical buffer '{}'", res.desc.debug_name);
-                return false;
+            if (!found) {
+                rhi::BufferDesc buf_desc{};
+                buf_desc.size = res.desc.size;
+                buf_desc.usage = res.desc.usage;
+                buf_desc.memory_usage = res.desc.memory_usage;
+                buf_desc.debug_name = res.desc.debug_name;
+
+                auto new_buf = std::make_unique<rhi::RhiBuffer>();
+                if (!new_buf->init(buf_desc)) {
+                    LOG_ERROR("RenderGraph", "Failed to allocate physical buffer '{}'", res.desc.debug_name);
+                    return false;
+                }
+                res.physical_buffer = new_buf.get();
+                m_buffer_pool.push_back(std::move(new_buf));
             }
         }
     }
