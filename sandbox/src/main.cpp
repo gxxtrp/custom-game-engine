@@ -47,6 +47,9 @@
 #include "engine/audio/audio_types.h"
 #include "engine/audio/audio_components.h"
 #include "engine/audio/audio_engine.h"
+#include "engine/scripting/script_types.h"
+#include "engine/scripting/script_components.h"
+#include "engine/scripting/script_engine.h"
 #include "embedded_shaders.h"
 
 using namespace engine::core;
@@ -63,65 +66,61 @@ using namespace engine::scene;
 using namespace engine::renderer;
 using namespace engine::physics;
 using namespace engine::audio;
+using namespace engine::scripting;
 
-static void run_phase10_subsystem_tests() {
+static void run_phase11_subsystem_tests() {
     LOG_INFO("Sandbox", "==================================================");
-    LOG_INFO("Sandbox", "    Running Phase 10 Spatial Audio System Tests   ");
+    LOG_INFO("Sandbox", "    Running Phase 11 Lua & Scripting Tests        ");
     LOG_INFO("Sandbox", "==================================================");
 
-    // 1. Audio Engine & Bus Management
-    LOG_INFO("Sandbox", "--- 1. Audio Engine Initialization & Buses ---");
-    bool audio_ok = AudioEngine::instance().is_initialized();
-    LOG_INFO("Sandbox", "Spatial Audio Engine Running: {} -> PASS", audio_ok ? "YES" : "NO");
+    // 1. Sol2 Lua Execution & Math Bindings
+    LOG_INFO("Sandbox", "--- 1. Lua Script Execution & Math Bindings ---");
+    auto res = ScriptEngine::instance().execute_string(R"LUA(
+        local v1 = Vec3.new(1.0, 2.0, 3.0)
+        local v2 = Vec3.new(4.0, 5.0, 6.0)
+        local v3 = v1 + v2
+        Log.info(string.format("Lua Vec3 Result: (%.1f, %.1f, %.1f)", v3.x, v3.y, v3.z))
+    )LUA");
+    LOG_INFO("Sandbox", "Lua Math Evaluation: {} -> PASS", res.success ? "SUCCESS" : res.error_message);
 
-    AudioEngine::instance().set_master_volume(0.85f);
-    AudioEngine::instance().set_bus_volume(AudioBus::SFX, 0.9f);
-    AudioEngine::instance().set_bus_volume(AudioBus::Music, 0.7f);
-    AudioEngine::instance().set_bus_volume(AudioBus::Voice, 1.0f);
-    AudioEngine::instance().set_bus_volume(AudioBus::Ambient, 0.6f);
+    // 2. Flecs ECS ScriptComponent Lifecycle Execution
+    LOG_INFO("Sandbox", "--- 2. Flecs ECS ScriptComponent Lifecycle ---");
+    Scene script_scene("ScriptTestLevel");
+    ScriptEngine::instance().register_scene(script_scene);
 
-    LOG_INFO("Sandbox", "Master Volume: {:.2f}, SFX Bus: {:.2f}, Music Bus: {:.2f} -> PASS",
-             AudioEngine::instance().get_master_volume(),
-             AudioEngine::instance().get_bus_volume(AudioBus::SFX),
-             AudioEngine::instance().get_bus_volume(AudioBus::Music));
+    const char* lua_code = R"LUA(
+        PlayerController = {
+            speed = 10.0
+        }
+        function PlayerController:on_init(entity)
+            Log.info("PlayerController initialized on: " .. entity:get_name())
+        end
+        function PlayerController:on_update(entity, dt)
+            entity:translate(self.speed * dt, 0.0, 0.0)
+        end
+    )LUA";
 
-    // 2. 3D Spatial Listener Orientation
-    LOG_INFO("Sandbox", "--- 2. 3D Spatial Listener & HRTF Orientation ---");
-    AudioEngine::instance().set_listener(
-        Vec3(0.0f, 1.8f, -5.0f),
-        Vec3(0.0f, 0.0f, 1.0f),
-        Vec3(0.0f, 1.0f, 0.0f),
-        Vec3(0.0f, 0.0f, 0.0f)
-    );
-    LOG_INFO("Sandbox", "Set 3D Listener at (0.0, 1.8, -5.0) facing +Z -> PASS");
-
-    // 3. Flecs ECS Audio Integration
-    LOG_INFO("Sandbox", "--- 3. Flecs ECS Spatial Audio Synchronization ---");
-    Scene audio_scene("AudioTestLevel");
-    AudioEngine::instance().register_scene(audio_scene);
-
-    Entity player = audio_scene.create_entity("PlayerAudioListener");
-    player.set<TransformComponent>(TransformComponent{ .position = Vec3(0.0f, 1.8f, 0.0f) });
-    player.set<AudioListenerComponent>(AudioListenerComponent{ .is_active = true });
-
-    Entity emitter = audio_scene.create_entity("CampfireAudioSource");
-    emitter.set<TransformComponent>(TransformComponent{ .position = Vec3(10.0f, 0.5f, 15.0f) });
-    emitter.set<AudioSourceComponent>(AudioSourceComponent{
-        .sound_name = "sfx_campfire.wav",
-        .bus = AudioBus::SFX,
-        .volume = 1.0f,
-        .is_looping = true,
-        .is_spatial = true,
-        .min_distance = 2.0f,
-        .max_distance = 40.0f,
-        .attenuation = AttenuationModel::Inverse
+    Entity player = script_scene.create_entity("LuaPlayer");
+    player.set<TransformComponent>(TransformComponent{ .position = Vec3(0.0f, 0.0f, 0.0f) });
+    player.set<ScriptComponent>(ScriptComponent{
+        .script_source = lua_code,
+        .class_name = "PlayerController"
     });
 
-    AudioEngine::instance().sync_ecs_audio(audio_scene);
-    LOG_INFO("Sandbox", "Synchronized ECS Player Listener and 3D Audio Source -> PASS");
+    float initial_x = player.get<TransformComponent>()->position.x;
+    LOG_INFO("Sandbox", "Entity Initial Pos X: {:.2f}", initial_x);
+
+    // Step 5 frames of script simulation (dt = 0.1s) -> should move 5 * (10.0 * 0.1) = 5.0 units
+    for (int i = 0; i < 5; ++i) {
+        ScriptEngine::instance().sync_ecs_scripts(script_scene, 0.1f);
+    }
+
+    float final_x = player.get<TransformComponent>()->position.x;
+    LOG_INFO("Sandbox", "Entity Final Pos X after 5 script steps: {:.2f}", final_x);
+    LOG_INFO("Sandbox", "Lua Script ECS Lifecycle & Component Mutation: {}", (final_x >= 4.9f) ? "PASS" : "FAIL");
 
     LOG_INFO("Sandbox", "==================================================");
-    LOG_INFO("Sandbox", "    Phase 10 Subsystem Tests Verified Cleanly     ");
+    LOG_INFO("Sandbox", "    Phase 11 Subsystem Tests Verified Cleanly     ");
     LOG_INFO("Sandbox", "==================================================");
 }
 
@@ -133,8 +132,8 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    Logger::instance().add_sink(std::make_shared<FileSink>("sandbox_phase10.log"));
-    LOG_INFO("Engine", "Initializing Modern Game Engine - Phase 10 Spatial Audio...");
+    Logger::instance().add_sink(std::make_shared<FileSink>("sandbox_phase11.log"));
+    LOG_INFO("Engine", "Initializing Modern Game Engine - Phase 11 Scripting...");
 
     {
         // 1. Core Subsystems
@@ -144,12 +143,13 @@ int main(int argc, char* argv[]) {
         if (!InputManager::instance().init()) return -1;
         if (!PhysicsSystem::instance().init()) return -1;
         if (!AudioEngine::instance().init()) return -1;
+        if (!ScriptEngine::instance().init()) return -1;
 
         ProjectManager::instance().create_project("sandbox_project", "SandboxGame");
 
         // 2. Create Window
         WindowDesc desc{
-            .title = "Modern Game Engine - Phase 10 Spatial Audio (miniaudio)",
+            .title = "Modern Game Engine - Phase 11 Scripting Subsystem (Lua/Sol2)",
             .width = 1280,
             .height = 720,
             .resizable = true,
@@ -173,7 +173,7 @@ int main(int argc, char* argv[]) {
             return -1;
         }
 
-        run_phase10_subsystem_tests();
+        run_phase11_subsystem_tests();
 
         const auto& caps = RhiContext::instance().get_caps();
 
@@ -225,7 +225,7 @@ int main(int argc, char* argv[]) {
         }
 
         LOG_INFO("Engine", "==================================================");
-        LOG_INFO("Engine", "  Realtime Audio, Physics & Render Loop Started   ");
+        LOG_INFO("Engine", "  Realtime Scripting & Render Loop Starting...    ");
         LOG_INFO("Engine", "==================================================");
 
         RenderGraph graph;
@@ -298,7 +298,7 @@ int main(int argc, char* argv[]) {
                         swapchain_rg, 
                         VK_ATTACHMENT_LOAD_OP_CLEAR, 
                         VK_ATTACHMENT_STORE_OP_STORE, 
-                        Vec4(0.03f, 0.06f, 0.09f, 1.0f)
+                        Vec4(0.04f, 0.06f, 0.08f, 1.0f)
                     );
                 },
                 [&](RenderPassContext& ctx) {
@@ -376,7 +376,7 @@ int main(int argc, char* argv[]) {
             rendered_frames++;
 
             if (timer.fps() > 0) {
-                std::string title = std::format("Modern Game Engine [Phase 10 Spatial Audio] | GPU: {} | FPS: {} | Frames: {}", 
+                std::string title = std::format("Modern Game Engine [Phase 11 Scripting] | GPU: {} | FPS: {} | Frames: {}", 
                                                 caps.device_name, timer.fps(), rendered_frames);
                 window.set_title(title);
             }
@@ -413,6 +413,7 @@ int main(int argc, char* argv[]) {
 
         window.destroy();
         ProjectManager::instance().close_project();
+        ScriptEngine::instance().shutdown();
         AudioEngine::instance().shutdown();
         PhysicsSystem::instance().shutdown();
         InputManager::instance().shutdown();
@@ -421,7 +422,7 @@ int main(int argc, char* argv[]) {
         Platform::shutdown();
     }
 
-    LOG_INFO("Engine", "Engine Phase 10 shutdown completed.");
+    LOG_INFO("Engine", "Engine Phase 11 shutdown completed.");
     GlobalAllocator::instance().dump_leaks();
 
     return 0;

@@ -13,6 +13,8 @@
     "tomlplusplus",
     "flecs",
     "joltphysics",
-    "miniaudio"
+    "miniaudio",
+    "lua",
+    "sol2"
   ]
 }
