@@ -7,6 +7,9 @@ add_executable(editor
     src/scene_viewport.cpp
     src/editor_state.cpp
     src/command_history.cpp
+    src/prefab_manager.cpp
+    src/asset_importer.cpp
+    src/content_browser.cpp
 )
 
 target_include_directories(editor PRIVATE

@@ -924,54 +924,7 @@ void EditorApp::render_inspector_panel() {
 
 
 void EditorApp::render_content_browser_panel() {
-    if (ImGui::Begin("Content Browser", &m_show_content_browser)) {
-        // Breadcrumb navigation
-        ImGui::TextColored(ImVec4(0.4f, 0.7f, 1.0f, 1.0f), "Virtual Path: /%s", m_current_browser_directory.c_str());
-        ImGui::Separator();
-
-        // Folder tree on left, items on right
-        ImGui::Columns(2, "ContentBrowserColumns", true);
-        ImGui::SetColumnWidth(0, 160.0f);
-
-        // Folders list
-        const char* folders[] = { "assets", "assets/models", "assets/textures", "assets/materials", "assets/audio", "maps", "scripts", "config" };
-        for (const char* folder : folders) {
-            if (ImGui::Selectable(folder, m_current_browser_directory == folder)) {
-                m_current_browser_directory = folder;
-            }
-        }
-
-        ImGui::NextColumn();
-
-        // Files grid
-        struct MockAsset { const char* name; const char* type; };
-        std::vector<MockAsset> files;
-        if (m_current_browser_directory.find("models") != std::string::npos) {
-            files = { { "character.glb", "Mesh" }, { "ground.glb", "Mesh" }, { "box.glb", "Mesh" } };
-        } else if (m_current_browser_directory.find("materials") != std::string::npos) {
-            files = { { "gold.mat", "Material" }, { "concrete.mat", "Material" } };
-        } else if (m_current_browser_directory.find("audio") != std::string::npos) {
-            files = { { "sfx_jump.wav", "Audio" }, { "sfx_footstep.wav", "Audio" }, { "music_ambient.ogg", "Audio" } };
-        } else if (m_current_browser_directory == "maps") {
-            files = { { "main_menu.map", "Map" }, { "sandbox.map", "Map" } };
-        } else if (m_current_browser_directory == "scripts") {
-            files = { { "player_controller.lua", "Script" }, { "enemy_ai.lua", "Script" } };
-        } else {
-            files = { { "models", "Folder" }, { "textures", "Folder" }, { "materials", "Folder" }, { "audio", "Folder" } };
-        }
-
-        for (const auto& file : files) {
-            std::string label = std::format("[{}]  {}", file.type, file.name);
-            if (ImGui::Selectable(label.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick)) {
-                if (ImGui::IsMouseDoubleClicked(0)) {
-                    LOG_INFO("Editor", "Opened asset: {}/{}", m_current_browser_directory, file.name);
-                }
-            }
-        }
-
-        ImGui::Columns(1);
-    }
-    ImGui::End();
+    m_content_browser.render(m_active_scene, m_selection_context, m_command_history, &m_show_content_browser);
 }
 
 void EditorApp::render_console_panel() {

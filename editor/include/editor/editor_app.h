@@ -6,6 +6,10 @@
 #include "editor/inspector_panel.h"
 #include "editor/scene_viewport.h"
 #include "editor/editor_state.h"
+#include "editor/command_history.h"
+#include "editor/content_browser.h"
+#include "editor/prefab_manager.h"
+#include "editor/asset_importer.h"
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <ImGuizmo.h>
@@ -76,6 +80,7 @@ public:
     SceneViewport& get_viewport() { return m_viewport; }
     EditorStateManager& get_state_manager() { return m_state_manager; }
     CommandHistory& get_command_history() { return m_command_history; }
+    ContentBrowserPanel& get_content_browser() { return m_content_browser; }
 
 private:
     EditorApp();
@@ -183,8 +188,8 @@ private:
     float m_frame_time_history[PROFILER_SAMPLE_COUNT]{0.0f};
     size_t m_frame_time_offset{0};
 
-    // Content Browser State
-    std::string m_current_browser_directory{"assets"};
+    // Content Browser
+    ContentBrowserPanel m_content_browser;
 
     // Environment Panel State
     float m_sun_intensity{1.5f};

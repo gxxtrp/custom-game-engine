@@ -1,4 +1,6 @@
 #include "editor/scene_viewport.h"
+#include "editor/prefab_manager.h"
+#include "editor/asset_importer.h"
 #include "engine/scene/components.h"
 #include "engine/physics/physics_system.h"
 #include "engine/physics/physics_components.h"
@@ -7,6 +9,7 @@
 #include <format>
 #include <cmath>
 #include <algorithm>
+#include <filesystem>
 
 namespace editor {
 
@@ -353,6 +356,46 @@ void SceneViewport::render(engine::scene::Scene& scene, SelectionContext& select
             ImVec2 mouse_screen = ImGui::GetMousePos();
             ImVec2 mouse_in_viewport(mouse_screen.x - m_position.x, mouse_screen.y - m_position.y);
             perform_raycast_picking(scene, selection, mouse_in_viewport);
+        }
+
+        // 6. Handle Drag-and-Drop from Content Browser into 3D Viewport
+        if (ImGui::BeginDragDropTarget()) {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM")) {
+                const char* asset_vpath = static_cast<const char*>(payload->Data);
+                std::string vpath_str(asset_vpath);
+                LOG_INFO("Viewport", "Dropped asset onto viewport: '{}'", vpath_str);
+
+                std::filesystem::path p(vpath_str);
+                std::string stem = p.stem().string();
+                std::string ext = p.extension().string();
+
+                if (vpath_str.ends_with(".prefab")) {
+                    flecs::entity spawned = PrefabManager::instantiate_prefab(vpath_str, scene, engine::core::Vec3(0.0f, 0.0f, 0.0f));
+                    if (spawned.is_valid()) {
+                        selection.select(spawned, false);
+                        history.push_executed_command(std::make_unique<EntityCreateCommand>(
+                            scene, EntitySnapshot::capture(spawned, scene)
+                        ));
+                    }
+                } else if (ext == ".glb" || ext == ".gltf" || ext == ".obj" || ext == ".fbx") {
+                    engine::scene::Entity entity = scene.create_entity(stem);
+                    entity.set<engine::scene::TransformComponent>(engine::scene::TransformComponent{ .position = engine::core::Vec3(0.0f, 0.0f, 0.0f) });
+                    entity.set<engine::scene::MeshRendererComponent>(engine::scene::MeshRendererComponent{ .cast_shadows = true });
+                    selection.select(entity.get_raw(), false);
+                    history.push_executed_command(std::make_unique<EntityCreateCommand>(
+                        scene, EntitySnapshot::capture(entity.get_raw(), scene)
+                    ));
+                } else if (ext == ".wav" || ext == ".mp3" || ext == ".ogg") {
+                    engine::scene::Entity entity = scene.create_entity(stem);
+                    entity.set<engine::scene::TransformComponent>(engine::scene::TransformComponent{ .position = engine::core::Vec3(0.0f, 0.0f, 0.0f) });
+                    entity.set<engine::audio::AudioSourceComponent>(engine::audio::AudioSourceComponent{ .sound_name = p.filename().string() });
+                    selection.select(entity.get_raw(), false);
+                    history.push_executed_command(std::make_unique<EntityCreateCommand>(
+                        scene, EntitySnapshot::capture(entity.get_raw(), scene)
+                    ));
+                }
+            }
+            ImGui::EndDragDropTarget();
         }
     }
     ImGui::End();
