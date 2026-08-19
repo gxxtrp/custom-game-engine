@@ -18,6 +18,8 @@ int main(int argc, char* argv[]) {
             desc.timeout = std::stof(argv[++i]);
         } else if (arg == "--no-validation") {
             desc.enable_validation = false;
+        } else if (arg == "--headless") {
+            desc.headless = true;
         }
     }
 

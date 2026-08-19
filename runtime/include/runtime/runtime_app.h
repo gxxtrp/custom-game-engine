@@ -17,6 +17,7 @@ struct RuntimeAppDesc {
     std::string project_path{""};
     float timeout{0.0f};
     bool enable_validation{true};
+    bool headless{false};
 };
 
 class RuntimeApp {

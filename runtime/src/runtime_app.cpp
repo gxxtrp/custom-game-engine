@@ -72,52 +72,56 @@ bool RuntimeApp::init(const RuntimeAppDesc& desc) {
 
     const auto& proj = engine::project::ProjectManager::instance().get_active_project();
 
-    // 4. Create Window from Game Project Config
-    engine::core::WindowDesc win_desc{
-        .title = proj.name.empty() ? "Modern Game Engine Runtime" : proj.name,
-        .width = proj.window_width > 0 ? proj.window_width : 1280,
-        .height = proj.window_height > 0 ? proj.window_height : 720,
-        .resizable = true,
-        .vulkan_compatible = true
-    };
+    if (!m_desc.headless) {
+        // 4. Create Window from Game Project Config
+        engine::core::WindowDesc win_desc{
+            .title = proj.name.empty() ? "Modern Game Engine Runtime" : proj.name,
+            .width = proj.window_width > 0 ? proj.window_width : 1280,
+            .height = proj.window_height > 0 ? proj.window_height : 720,
+            .resizable = true,
+            .vulkan_compatible = true
+        };
 
-    if (!m_window.create(win_desc)) {
-        LOG_FATAL("Runtime", "Failed to create runtime window!");
-        return false;
-    }
+        if (!m_window.create(win_desc)) {
+            LOG_FATAL("Runtime", "Failed to create runtime window!");
+            return false;
+        }
 
-    // 5. Initialize Vulkan 1.3 RHI
-    if (!engine::rhi::RhiContext::instance().init(m_window, m_desc.enable_validation)) {
-        LOG_FATAL("Runtime", "Failed to initialize Vulkan 1.3 RHI!");
-        return false;
-    }
+        // 5. Initialize Vulkan 1.3 RHI
+        if (!engine::rhi::RhiContext::instance().init(m_window, m_desc.enable_validation)) {
+            LOG_FATAL("Runtime", "Failed to initialize Vulkan 1.3 RHI!");
+            return false;
+        }
 
-    // 6. Create Swapchain
-    if (!m_swapchain.init(m_window.get_width(), m_window.get_height(), proj.vsync)) {
-        LOG_FATAL("Runtime", "Failed to create swapchain!");
-        return false;
-    }
+        // 6. Create Swapchain
+        if (!m_swapchain.init(m_window.get_width(), m_window.get_height(), proj.vsync)) {
+            LOG_FATAL("Runtime", "Failed to create swapchain!");
+            return false;
+        }
 
-    // 7. Initialize Sync Primitives & Command Pools
-    m_cmd_pool.init(engine::rhi::RhiContext::instance().get_queue_families().graphics_family);
+        // 7. Initialize Sync Primitives & Command Pools
+        m_cmd_pool.init(engine::rhi::RhiContext::instance().get_queue_families().graphics_family);
 
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-        m_cmd_buffers[i].init(m_cmd_pool.get_handle());
-        m_in_flight_fences[i].init(true);
-        m_image_available_semaphores[i].init(false);
-    }
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+            m_cmd_buffers[i].init(m_cmd_pool.get_handle());
+            m_in_flight_fences[i].init(true);
+            m_image_available_semaphores[i].init(false);
+        }
 
-    uint32_t image_count = m_swapchain.get_image_count();
-    m_render_finished_semaphores.resize(image_count);
-    for (size_t i = 0; i < image_count; ++i) {
-        m_render_finished_semaphores[i].init(false);
-    }
+        uint32_t image_count = m_swapchain.get_image_count();
+        m_render_finished_semaphores.resize(image_count);
+        for (size_t i = 0; i < image_count; ++i) {
+            m_render_finished_semaphores[i].init(false);
+        }
 
-    // 8. Initialize Scene Renderer
-    engine::rhi::Format sc_format = static_cast<engine::rhi::Format>(m_swapchain.get_format());
-    if (!engine::renderer::SceneRenderer::instance().init(sc_format, engine::rhi::Format::D32_SFLOAT)) {
-        LOG_FATAL("Runtime", "Failed to initialize SceneRenderer!");
-        return false;
+        // 8. Initialize Scene Renderer
+        engine::rhi::Format sc_format = static_cast<engine::rhi::Format>(m_swapchain.get_format());
+        if (!engine::renderer::SceneRenderer::instance().init(sc_format, engine::rhi::Format::D32_SFLOAT)) {
+            LOG_FATAL("Runtime", "Failed to initialize SceneRenderer!");
+            return false;
+        }
+    } else {
+        LOG_INFO("Runtime", "Running in Headless Dedicated Simulation / Server mode (No Window / No GPU)");
     }
 
     // 9. Register Scene with Subsystems
@@ -170,37 +174,41 @@ void RuntimeApp::step() {
     engine::core::DynamicArray<engine::core::PlatformEvent> events;
     engine::core::Platform::poll_events(events);
     for (const auto& ev : events) {
-        engine::core::Platform::process_window_events(m_window, ev);
+        if (!m_desc.headless) {
+            engine::core::Platform::process_window_events(m_window, ev);
+        }
         engine::input::InputManager::instance().process_event(ev);
 
         if (ev.type == engine::core::EventType::Quit || ev.type == engine::core::EventType::WindowClose) {
             m_running = false;
-            m_window.set_should_close(true);
+            if (!m_desc.headless) m_window.set_should_close(true);
             return;
         }
 
-        if (ev.type == engine::core::EventType::WindowResize) {
+        if (!m_desc.headless && ev.type == engine::core::EventType::WindowResize) {
             if (ev.window_resize.width > 0 && ev.window_resize.height > 0) {
                 m_swapchain.resize(ev.window_resize.width, ev.window_resize.height);
             }
         }
     }
 
-    if (m_window.should_close() || !m_running || engine::input::InputManager::instance().is_key_pressed(engine::core::KeyCode::Escape)) {
-        m_running = false;
-        m_window.set_should_close(true);
-        return;
-    }
+    if (!m_desc.headless) {
+        if (m_window.should_close() || !m_running || engine::input::InputManager::instance().is_key_pressed(engine::core::KeyCode::Escape)) {
+            m_running = false;
+            m_window.set_should_close(true);
+            return;
+        }
 
-    // Skip rendering if window is minimized or has 0 size
-    if (m_window.get_width() == 0 || m_window.get_height() == 0 ||
-        m_swapchain.get_extent().width == 0 || m_swapchain.get_extent().height == 0) {
-        return;
+        // Skip rendering if window is minimized or has 0 size
+        if (m_window.get_width() == 0 || m_window.get_height() == 0 ||
+            m_swapchain.get_extent().width == 0 || m_swapchain.get_extent().height == 0) {
+            return;
+        }
     }
 
     // Handle automated testing timeout
     if (m_desc.timeout > 0.0f && m_timer.total_time() >= m_desc.timeout) {
-        LOG_INFO("Runtime", "Reached automated test timeout ({:.2f}s, rendered {} frames). Requesting exit...",
+        LOG_INFO("Runtime", "Reached automated test timeout ({:.2f}s, rendered/simulated {} frames). Requesting exit...",
                  m_desc.timeout, m_rendered_frames);
         m_running = false;
         return;
@@ -218,6 +226,12 @@ void RuntimeApp::step() {
     engine::scripting::ScriptEngine::instance().sync_ecs_scripts(m_scene, dt);
     engine::audio::AudioEngine::instance().update(dt);
     m_scene.update(dt);
+
+    if (m_desc.headless) {
+        m_rendered_frames++;
+        engine::core::Clock::sleep_ms(1);
+        return;
+    }
 
     // 3. Vulkan Swapchain Acquisition & Frame Rendering
     m_in_flight_fences[m_current_frame].wait();
@@ -397,32 +411,34 @@ void RuntimeApp::shutdown() {
 
     LOG_INFO("Runtime", "Shutting down Modern Game Engine Runtime...");
 
-    engine::rhi::RhiContext::instance().wait_idle();
+    if (!m_desc.headless) {
+        engine::rhi::RhiContext::instance().wait_idle();
 
-    // 1. Destroy Render Graph (frees transient GPU textures/buffers)
-    m_render_graph.destroy();
+        // 1. Destroy Render Graph (frees transient GPU textures/buffers)
+        m_render_graph.destroy();
 
-    // 2. Destroy Sync & Command Buffers
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-        m_in_flight_fences[i].destroy();
-        m_image_available_semaphores[i].destroy();
-        m_cmd_buffers[i].destroy(m_cmd_pool.get_handle());
+        // 2. Destroy Sync & Command Buffers
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+            m_in_flight_fences[i].destroy();
+            m_image_available_semaphores[i].destroy();
+            m_cmd_buffers[i].destroy(m_cmd_pool.get_handle());
+        }
+
+        for (auto& sem : m_render_finished_semaphores) {
+            sem.destroy();
+        }
+        m_render_finished_semaphores.clear();
+
+        m_cmd_pool.destroy();
+
+        // 3. Shutdown Scene Renderer, Swapchain & Vulkan Context
+        engine::renderer::SceneRenderer::instance().shutdown();
+        m_swapchain.destroy();
+        engine::rhi::RhiContext::instance().shutdown();
+        m_window.destroy();
     }
 
-    for (auto& sem : m_render_finished_semaphores) {
-        sem.destroy();
-    }
-    m_render_finished_semaphores.clear();
-
-    m_cmd_pool.destroy();
-
-    // 3. Shutdown Scene Renderer, Swapchain & Vulkan Context
-    engine::renderer::SceneRenderer::instance().shutdown();
-    m_swapchain.destroy();
-    engine::rhi::RhiContext::instance().shutdown();
-    m_window.destroy();
-
-    // 3. Shutdown Engine Master Subsystems
+    // 4. Shutdown Engine Master Subsystems
     engine::project::ProjectManager::instance().close_project();
     engine::scripting::ScriptEngine::instance().shutdown();
     engine::audio::AudioEngine::instance().shutdown();
@@ -438,12 +454,14 @@ void RuntimeApp::shutdown() {
 }
 
 bool RuntimeApp::is_running() const {
-    return m_running && m_window.is_open() && !m_window.should_close();
+    return m_running && (m_desc.headless || (m_window.is_open() && !m_window.should_close()));
 }
 
 void RuntimeApp::request_exit() {
     m_running = false;
-    m_window.set_should_close(true);
+    if (!m_desc.headless) {
+        m_window.set_should_close(true);
+    }
 }
 
 } // namespace runtime
