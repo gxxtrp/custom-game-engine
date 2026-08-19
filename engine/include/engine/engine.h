@@ -64,6 +64,7 @@ struct EngineDesc {
     bool enable_vsync{true};
     bool enable_validation{true};
     bool enable_editor_ui{true};
+    std::string project_manifest_path{""};
 };
 
 class Engine {

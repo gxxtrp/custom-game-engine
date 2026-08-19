@@ -1,0 +1,24 @@
+[autosave]
+autosave_enabled = true
+autosave_interval_seconds = 300.0
+max_autosaves = 5
+
+[general]
+last_project_path = 'sandbox_project'
+theme_index = 0
+
+[snapping]
+snap_enabled = false
+snap_rotation = 15.0
+snap_scale = 0.10000000149011612
+snap_translation = 0.5
+
+[viewport]
+camera_fov = 60.0
+camera_speed = 5.0
+flycam_sensitivity = 0.30000001192092896
+
+[[recent_projects]]
+last_opened = 1787152128
+name = 'SandboxGame'
+path = 'sandbox_project'

@@ -47,8 +47,10 @@ void ProfilerPanel::render(engine::scene::Scene& scene, float dt, bool* is_open)
         ImGui::TextDisabled("Avg: %.2f ms", m_avg_frame_time);
         ImGui::NextColumn();
 
-        ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.3f, 1.0f), "Draw Calls: 4");
-        ImGui::TextDisabled("Triangles: 1,024");
+        size_t mesh_count = scene.get_world().count<engine::scene::MeshRendererComponent>();
+        size_t light_count = scene.get_world().count<engine::scene::DirectionalLightComponent>() + scene.get_world().count<engine::scene::PointLightComponent>();
+        ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.3f, 1.0f), "Meshes: %zu", mesh_count);
+        ImGui::TextDisabled("Lights: %zu", light_count);
         ImGui::NextColumn();
 
         ImGui::TextColored(ImVec4(0.85f, 0.5f, 0.95f, 1.0f), "Entities: %zu", scene.get_entity_count());

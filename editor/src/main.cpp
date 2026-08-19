@@ -5,8 +5,8 @@
 
 int main(int argc, char* argv[]) {
     float timeout = 0.0f;
-    std::string project_dir = "sandbox_project";
-    std::string project_name = "SandboxGame";
+    std::string project_dir = "";
+    std::string project_name = "";
     uint32_t width = 1600;
     uint32_t height = 900;
     bool vsync = true;

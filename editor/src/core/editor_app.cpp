@@ -123,8 +123,28 @@ bool EditorApp::init(const EditorAppDesc& desc) {
     if (!engine::audio::AudioEngine::instance().init()) return false;
     if (!engine::scripting::ScriptEngine::instance().init()) return false;
 
-    // 3. Project Manager
-    engine::project::ProjectManager::instance().create_project(m_desc.project_directory, m_desc.project_name);
+    // 3. Editor Preferences & Project Manager
+    m_preferences.load_from_file(".engine/editor_preferences.toml");
+    m_camera_speed = m_preferences.camera_speed;
+    m_use_snap = m_preferences.snap_enabled;
+
+    std::string project_dir = m_desc.project_directory;
+    std::string project_name = m_desc.project_name;
+    if (project_dir.empty() && !m_preferences.last_project_path.empty()) {
+        project_dir = m_preferences.last_project_path;
+    }
+
+    if (!project_dir.empty()) {
+        std::filesystem::path p(project_dir);
+        if (std::filesystem::exists(p / "project.toml")) {
+            engine::project::ProjectManager::instance().load_project((p / "project.toml").string());
+        } else if (std::filesystem::exists(p) && p.extension() == ".toml") {
+            engine::project::ProjectManager::instance().load_project(p.string());
+        } else {
+            engine::project::ProjectManager::instance().create_project(project_dir, project_name);
+        }
+        m_preferences.add_recent_project(engine::project::ProjectManager::instance().get_active_project().name, project_dir);
+    }
 
     // 4. Window & Vulkan 1.3 Context
     engine::core::WindowDesc win_desc{
@@ -262,11 +282,13 @@ bool EditorApp::init(const EditorAppDesc& desc) {
     // Initialize initial offscreen viewport render target
     create_or_resize_viewport_framebuffer(1280, 720);
 
-    // Populate Initial Scene with Standard Objects
-    create_primitive_entity("GroundPlane");
-    create_primitive_entity("PlayerController");
-    create_primitive_entity("DynamicPhysicsBox");
-    create_primitive_entity("DirectionalLight");
+    // Load Project Startup Scene if present, or start clean scene
+    auto& proj = engine::project::ProjectManager::instance().get_active_project();
+    if (!proj.default_map.empty() && (engine::vfs::VFS::instance().file_exists(proj.default_map) || std::filesystem::exists(proj.default_map))) {
+        open_scene(proj.default_map);
+    } else {
+        new_scene();
+    }
 
     m_initialized = true;
     m_running = true;
@@ -371,25 +393,50 @@ void EditorApp::new_scene() {
     m_selection_context.clear();
     m_command_history.clear();
     m_current_scene_path = "/maps/untitled.map";
-    LOG_INFO("Editor", "Created new empty scene");
+
+    // Create default environment entities for authoring
+    create_primitive_entity("DirectionalLight");
+    create_primitive_entity("Camera");
+
+    LOG_INFO("Editor", "Created new empty scene with default lighting");
 }
 
 void EditorApp::open_scene(const std::string& path) {
     if (!m_state_manager.is_editing()) {
         set_mode(EditorMode::Edit);
     }
+    m_selection_context.clear();
     m_command_history.clear();
-    m_current_scene_path = path;
-    LOG_INFO("Editor", "Opened scene: {}", path);
+
+    if (engine::scene::MapSerializer::load_map(path, m_active_scene)) {
+        m_current_scene_path = path;
+        LOG_INFO("Editor", "Opened and deserialized scene: {}", path);
+    } else {
+        LOG_WARN("Editor", "Could not deserialize scene '{}', initializing clean scene", path);
+        new_scene();
+        m_current_scene_path = path;
+    }
 }
 
 void EditorApp::save_scene() {
-    LOG_INFO("Editor", "Saved scene to {}", m_current_scene_path);
+    if (m_current_scene_path.empty() || m_current_scene_path == "/maps/untitled.map") {
+        save_scene_as("/maps/main.map");
+        return;
+    }
+    if (engine::scene::MapSerializer::save_map(m_active_scene, m_current_scene_path)) {
+        LOG_INFO("Editor", "Saved scene to {}", m_current_scene_path);
+    } else {
+        LOG_ERROR("Editor", "Failed to save scene to {}", m_current_scene_path);
+    }
 }
 
 void EditorApp::save_scene_as(const std::string& path) {
     m_current_scene_path = path;
-    LOG_INFO("Editor", "Saved scene as {}", path);
+    if (engine::scene::MapSerializer::save_map(m_active_scene, m_current_scene_path)) {
+        LOG_INFO("Editor", "Saved scene as {}", path);
+    } else {
+        LOG_ERROR("Editor", "Failed to save scene as {}", path);
+    }
 }
 
 void EditorApp::create_or_resize_viewport_framebuffer(uint32_t width, uint32_t height) {
@@ -601,7 +648,9 @@ void EditorApp::render_main_menu_bar() {
                 m_selection_context.clear();
             }
             ImGui::Separator();
-            if (ImGui::MenuItem("Editor Preferences...")) {}
+            if (ImGui::MenuItem("Editor Preferences...")) {
+                m_show_preferences = true;
+            }
             ImGui::EndMenu();
         }
 
@@ -839,11 +888,15 @@ void EditorApp::render_status_bar() {
         ImGui::TextColored(mode_color, "%s", mode_text);
 
         // 3. Right: Stats & GPU
-        float right_width = 540.0f;
+        uint32_t entity_count = static_cast<uint32_t>(m_active_scene.get_entity_count());
+        uint32_t mesh_count = static_cast<uint32_t>(m_active_scene.get_world().count<engine::scene::MeshRendererComponent>());
+        float right_width = 560.0f;
         ImGui::SameLine(ImGui::GetWindowWidth() - right_width);
-        ImGui::Text("FPS: %u (%.2f ms) | Draw Calls: 4 | Triangles: 1,024 | GPU: %s",
+        ImGui::Text("FPS: %u (%.2f ms) | Entities: %u | Meshes: %u | GPU: %s",
                     m_timer.fps(),
                     m_timer.delta_time() * 1000.0f,
+                    entity_count,
+                    mesh_count,
                     engine::rhi::RhiContext::instance().get_caps().device_name.c_str());
     }
     ImGui::End();
@@ -948,6 +1001,54 @@ void EditorApp::render_project_settings_dialog() {
             pm.save_project();
             LOG_INFO("Editor", "Project Settings saved to project.toml");
             m_show_project_settings = false;
+        }
+    }
+    ImGui::End();
+}
+
+void EditorApp::render_preferences_dialog() {
+    if (!m_show_preferences) return;
+
+    ImGui::SetNextWindowSize(ImVec2(520, 380), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Editor Preferences", &m_show_preferences)) {
+        if (ImGui::CollapsingHeader("Viewport Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (ImGui::DragFloat("Camera Speed", &m_preferences.camera_speed, 0.1f, 0.1f, 50.0f)) {
+                m_camera_speed = m_preferences.camera_speed;
+            }
+            ImGui::DragFloat("Field of View", &m_preferences.camera_fov, 0.5f, 30.0f, 120.0f);
+            ImGui::DragFloat("Flycam Sensitivity", &m_preferences.flycam_sensitivity, 0.01f, 0.05f, 2.0f);
+        }
+
+        if (ImGui::CollapsingHeader("Snapping Defaults", ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (ImGui::Checkbox("Enable Snapping", &m_preferences.snap_enabled)) {
+                m_use_snap = m_preferences.snap_enabled;
+            }
+            ImGui::DragFloat("Translation Snap (m)", &m_preferences.snap_translation, 0.05f, 0.01f, 10.0f);
+            ImGui::DragFloat("Rotation Snap (deg)", &m_preferences.snap_rotation, 1.0f, 1.0f, 90.0f);
+            ImGui::DragFloat("Scale Snap", &m_preferences.snap_scale, 0.01f, 0.01f, 1.0f);
+        }
+
+        if (ImGui::CollapsingHeader("Autosave Settings", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Checkbox("Enable Autosave", &m_preferences.autosave_enabled);
+            ImGui::DragFloat("Autosave Interval (s)", &m_preferences.autosave_interval_seconds, 10.0f, 30.0f, 1800.0f);
+            int max_backups = static_cast<int>(m_preferences.max_autosaves);
+            if (ImGui::DragInt("Max Backups", &max_backups, 1, 1, 20)) {
+                m_preferences.max_autosaves = static_cast<uint32_t>(max_backups);
+            }
+        }
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        if (ImGui::Button("Save Preferences", ImVec2(140, 28))) {
+            m_preferences.camera_speed = m_camera_speed;
+            m_preferences.snap_enabled = m_use_snap;
+            m_preferences.save_to_file(".engine/editor_preferences.toml");
+            LOG_INFO("Editor", "Saved preferences to .engine/editor_preferences.toml");
+            m_show_preferences = false;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Close", ImVec2(100, 28))) {
+            m_show_preferences = false;
         }
     }
     ImGui::End();
@@ -1080,6 +1181,7 @@ void EditorApp::step() {
     if (m_show_profiler) render_profiler_panel();
     if (m_show_environment) render_environment_panel();
     if (m_show_project_settings) render_project_settings_dialog();
+    if (m_show_preferences) render_preferences_dialog();
     if (m_show_packaging_dialog) render_packaging_dialog();
     if (m_show_about_dialog) render_about_dialog();
     if (m_show_imgui_demo) ImGui::ShowDemoWindow(&m_show_imgui_demo);
@@ -1289,6 +1391,10 @@ void EditorApp::shutdown() {
     engine::rhi::RhiContext::instance().shutdown();
 
     m_window.destroy();
+    m_preferences.camera_speed = m_camera_speed;
+    m_preferences.snap_enabled = m_use_snap;
+    m_preferences.save_to_file(".engine/editor_preferences.toml");
+
     engine::project::ProjectManager::instance().close_project();
     engine::scripting::ScriptEngine::instance().shutdown();
     engine::audio::AudioEngine::instance().shutdown();

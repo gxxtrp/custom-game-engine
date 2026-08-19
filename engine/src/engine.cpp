@@ -34,7 +34,9 @@ bool Engine::init(const EngineDesc& desc) {
     if (!scripting::ScriptEngine::instance().init()) return false;
 
     // 3. Project & VFS
-    project::ProjectManager::instance().create_project("sandbox_project", "SandboxGame");
+    if (!desc.project_manifest_path.empty()) {
+        project::ProjectManager::instance().load_project(desc.project_manifest_path);
+    }
 
     // 4. Window & Vulkan 1.3 RHI
     core::WindowDesc win_desc{

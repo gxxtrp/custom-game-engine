@@ -13,6 +13,7 @@
 #include "editor/panels/console_panel.h"
 #include "editor/panels/profiler_panel.h"
 #include "editor/core/autosave_manager.h"
+#include "editor/core/editor_preferences.h"
 #include "editor/tools/game_exporter.h"
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -33,8 +34,8 @@ struct EditorAppDesc {
     uint32_t height{900};
     bool vsync{true};
     bool enable_validation{true};
-    std::string project_directory{"sandbox_project"};
-    std::string project_name{"SandboxGame"};
+    std::string project_directory{""};
+    std::string project_name{""};
 };
 
 class EditorApp {
@@ -65,6 +66,7 @@ public:
     ProfilerPanel& get_profiler_panel() { return m_profiler_panel; }
     AutosaveManager& get_autosave_manager() { return m_autosave_manager; }
     GameExporter& get_game_exporter() { return m_game_exporter; }
+    EditorPreferences& get_preferences() { return m_preferences; }
 
 private:
     EditorApp();
@@ -88,6 +90,7 @@ private:
     void render_profiler_panel();
     void render_environment_panel();
     void render_project_settings_dialog();
+    void render_preferences_dialog();
     void render_packaging_dialog();
     void render_about_dialog();
 
@@ -144,6 +147,7 @@ private:
     bool m_show_profiler{true};
     bool m_show_environment{true};
     bool m_show_project_settings{false};
+    bool m_show_preferences{false};
     bool m_show_packaging_dialog{false};
     bool m_show_about_dialog{false};
     bool m_show_imgui_demo{false};
@@ -168,6 +172,7 @@ private:
     ContentBrowserPanel m_content_browser;
     AutosaveManager m_autosave_manager;
     GameExporter m_game_exporter;
+    EditorPreferences m_preferences;
 
     // Environment Panel State
     float m_sun_intensity{1.5f};

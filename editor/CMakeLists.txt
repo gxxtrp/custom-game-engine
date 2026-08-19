@@ -8,6 +8,7 @@ add_executable(editor
     src/core/selection_context.cpp
     src/core/command_history.cpp
     src/core/autosave_manager.cpp
+    src/core/editor_preferences.cpp
 
     # Panels
     src/panels/scene_viewport.cpp
