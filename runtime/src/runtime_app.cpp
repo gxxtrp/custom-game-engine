@@ -170,11 +170,31 @@ void RuntimeApp::step() {
     engine::core::DynamicArray<engine::core::PlatformEvent> events;
     engine::core::Platform::poll_events(events);
     for (const auto& ev : events) {
+        engine::core::Platform::process_window_events(m_window, ev);
         engine::input::InputManager::instance().process_event(ev);
+
+        if (ev.type == engine::core::EventType::Quit || ev.type == engine::core::EventType::WindowClose) {
+            m_running = false;
+            m_window.set_should_close(true);
+            return;
+        }
+
+        if (ev.type == engine::core::EventType::WindowResize) {
+            if (ev.window_resize.width > 0 && ev.window_resize.height > 0) {
+                m_swapchain.resize(ev.window_resize.width, ev.window_resize.height);
+            }
+        }
     }
 
-    if (m_window.should_close() || engine::input::InputManager::instance().is_key_pressed(engine::core::KeyCode::Escape)) {
+    if (m_window.should_close() || !m_running || engine::input::InputManager::instance().is_key_pressed(engine::core::KeyCode::Escape)) {
         m_running = false;
+        m_window.set_should_close(true);
+        return;
+    }
+
+    // Skip rendering if window is minimized or has 0 size
+    if (m_window.get_width() == 0 || m_window.get_height() == 0 ||
+        m_swapchain.get_extent().width == 0 || m_swapchain.get_extent().height == 0) {
         return;
     }
 
@@ -209,8 +229,10 @@ void RuntimeApp::step() {
         image_index
     );
 
-    if (acquire_res == VK_ERROR_OUT_OF_DATE_KHR) {
-        m_swapchain.resize(m_window.get_width(), m_window.get_height());
+    if (acquire_res == VK_ERROR_OUT_OF_DATE_KHR || acquire_res == VK_SUBOPTIMAL_KHR) {
+        if (m_window.get_width() > 0 && m_window.get_height() > 0) {
+            m_swapchain.resize(m_window.get_width(), m_window.get_height());
+        }
         return;
     }
 
@@ -361,7 +383,9 @@ void RuntimeApp::step() {
     );
 
     if (present_res == VK_ERROR_OUT_OF_DATE_KHR || present_res == VK_SUBOPTIMAL_KHR) {
-        m_swapchain.resize(m_window.get_width(), m_window.get_height());
+        if (m_window.get_width() > 0 && m_window.get_height() > 0) {
+            m_swapchain.resize(m_window.get_width(), m_window.get_height());
+        }
     }
 
     m_current_frame = (m_current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
@@ -414,7 +438,7 @@ void RuntimeApp::shutdown() {
 }
 
 bool RuntimeApp::is_running() const {
-    return m_running && m_window.is_open();
+    return m_running && m_window.is_open() && !m_window.should_close();
 }
 
 void RuntimeApp::request_exit() {

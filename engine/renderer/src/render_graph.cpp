@@ -97,6 +97,10 @@ bool RenderGraph::compile() {
     size_t pool_tex_idx = 0;
     for (auto& res : m_textures) {
         if (!res.is_external && !res.physical_texture) {
+            if (res.desc.width == 0 || res.desc.height == 0) {
+                continue;
+            }
+
             // Find existing matching texture in pool
             bool found = false;
             while (pool_tex_idx < m_texture_pool.size()) {
@@ -133,6 +137,9 @@ bool RenderGraph::compile() {
     size_t pool_buf_idx = 0;
     for (auto& res : m_buffers) {
         if (!res.is_external && !res.physical_buffer) {
+            if (res.desc.size == 0) {
+                continue;
+            }
             bool found = false;
             while (pool_buf_idx < m_buffer_pool.size()) {
                 const auto& pooled = m_buffer_pool[pool_buf_idx++];
