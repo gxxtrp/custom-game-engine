@@ -11,8 +11,6 @@
 #include <ctime>
 
 namespace editor {
-
-// ============================================================================
 // ============================================================================
 // EditorApp Implementation
 // ============================================================================
@@ -341,54 +339,96 @@ void EditorApp::create_primitive_entity(std::string_view type) {
     using namespace engine::audio;
     using namespace engine::scripting;
 
-    if (type == "GroundPlane") {
-        Entity ground = m_active_scene.create_entity("GroundPlane");
-        ground.set<TransformComponent>(TransformComponent{ 
-            .position = Vec3(0.0f, -0.5f, 0.0f),
-            .scale = Vec3(20.0f, 1.0f, 20.0f)
+    Entity entity;
+
+    if (type == "Cube") {
+        entity = m_active_scene.create_entity("Cube");
+        entity.set<TransformComponent>(TransformComponent{ 
+            .position = Vec3(0.0f, 1.0f, 0.0f),
+            .scale = Vec3(1.0f, 1.0f, 1.0f)
         });
-        ground.set<MeshRendererComponent>(MeshRendererComponent{ .cast_shadows = false });
-        ground.set<RigidBodyComponent>(RigidBodyComponent{ .motion_type = BodyMotionType::Static });
-        ground.set<ColliderComponent>(ColliderComponent{ 
+        entity.set<MeshRendererComponent>(MeshRendererComponent{ .is_visible = true });
+        entity.set<RigidBodyComponent>(RigidBodyComponent{ .motion_type = BodyMotionType::Dynamic, .mass = 1.0f });
+        entity.set<ColliderComponent>(ColliderComponent{ 
             .shape_type = ColliderShapeType::Box,
-            .box_half_extents = Vec3(10.0f, 0.5f, 10.0f)
+            .box_half_extents = Vec3(0.5f, 0.5f, 0.5f)
         });
-    } else if (type == "PlayerController") {
-        Entity player = m_active_scene.create_entity("PlayerController");
-        player.set<TransformComponent>(TransformComponent{ .position = Vec3(0.0f, 1.5f, 0.0f) });
-        player.set<MeshRendererComponent>(MeshRendererComponent{ .cast_shadows = true });
-        player.set<AudioSourceComponent>(AudioSourceComponent{ .sound_name = "sfx_footstep.wav", .volume = 0.8f });
-        player.set<ScriptComponent>(ScriptComponent{ .class_name = "PlayerController" });
-        m_selection_context.select(player.get_raw(), false);
-    } else if (type == "DynamicPhysicsBox") {
-        Entity box = m_active_scene.create_entity("DynamicPhysicsBox");
-        box.set<TransformComponent>(TransformComponent{ .position = Vec3(2.0f, 5.0f, 0.0f) });
-        box.set<MeshRendererComponent>(MeshRendererComponent{ .cast_shadows = true });
-        box.set<RigidBodyComponent>(RigidBodyComponent{ .motion_type = BodyMotionType::Dynamic, .mass = 5.0f });
-        box.set<ColliderComponent>(ColliderComponent{ .shape_type = ColliderShapeType::Box });
+    } else if (type == "Sphere") {
+        entity = m_active_scene.create_entity("Sphere");
+        entity.set<TransformComponent>(TransformComponent{ 
+            .position = Vec3(0.0f, 1.0f, 0.0f),
+            .scale = Vec3(1.0f, 1.0f, 1.0f)
+        });
+        entity.set<MeshRendererComponent>(MeshRendererComponent{ .is_visible = true });
+        entity.set<RigidBodyComponent>(RigidBodyComponent{ .motion_type = BodyMotionType::Dynamic, .mass = 1.0f });
+        entity.set<ColliderComponent>(ColliderComponent{ 
+            .shape_type = ColliderShapeType::Sphere,
+            .radius = 0.5f
+        });
+    } else if (type == "GroundPlane" || type == "Plane") {
+        entity = m_active_scene.create_entity("GroundPlane");
+        entity.set<TransformComponent>(TransformComponent{ 
+            .position = Vec3(0.0f, -0.05f, 0.0f),
+            .scale = Vec3(20.0f, 0.1f, 20.0f)
+        });
+        entity.set<MeshRendererComponent>(MeshRendererComponent{ .is_visible = true });
+        entity.set<RigidBodyComponent>(RigidBodyComponent{ .motion_type = BodyMotionType::Static });
+        entity.set<ColliderComponent>(ColliderComponent{ 
+            .shape_type = ColliderShapeType::Box,
+            .box_half_extents = Vec3(10.0f, 0.05f, 10.0f)
+        });
+    } else if (type == "Capsule" || type == "Cylinder") {
+        entity = m_active_scene.create_entity("Capsule");
+        entity.set<TransformComponent>(TransformComponent{ 
+            .position = Vec3(0.0f, 1.0f, 0.0f),
+            .scale = Vec3(1.0f, 1.0f, 1.0f)
+        });
+        entity.set<MeshRendererComponent>(MeshRendererComponent{ .is_visible = true });
+        entity.set<RigidBodyComponent>(RigidBodyComponent{ .motion_type = BodyMotionType::Dynamic, .mass = 1.0f });
+        entity.set<ColliderComponent>(ColliderComponent{ 
+            .shape_type = ColliderShapeType::Capsule,
+            .radius = 0.4f,
+            .half_height = 0.5f
+        });
     } else if (type == "DirectionalLight") {
-        Entity light = m_active_scene.create_entity("SunLight");
-        light.set<TransformComponent>(TransformComponent{ .position = Vec3(20.0f, 50.0f, -20.0f) });
-        light.set<DirectionalLightComponent>(DirectionalLightComponent{
-            .color = Vec3(1.0f, 0.95f, 0.88f),
-            .intensity = 2.0f,
+        entity = m_active_scene.create_entity("SunLight");
+        entity.set<TransformComponent>(TransformComponent{ .position = Vec3(20.0f, 50.0f, -20.0f) });
+        entity.set<DirectionalLightComponent>(DirectionalLightComponent{
+            .color = Vec3(1.0f, 0.98f, 0.92f),
+            .intensity = 1.5f,
             .cast_shadows = true
         });
     } else if (type == "PointLight") {
-        Entity light = m_active_scene.create_entity("PointLight");
-        light.set<TransformComponent>(TransformComponent{ .position = Vec3(0.0f, 3.0f, 0.0f) });
-        light.set<PointLightComponent>(PointLightComponent{
+        entity = m_active_scene.create_entity("PointLight");
+        entity.set<TransformComponent>(TransformComponent{ .position = Vec3(0.0f, 3.0f, 0.0f) });
+        entity.set<PointLightComponent>(PointLightComponent{
             .color = Vec3(0.4f, 0.8f, 1.0f),
             .intensity = 5.0f,
             .radius = 12.0f
         });
     } else if (type == "Camera") {
-        Entity cam = m_active_scene.create_entity("MainCamera");
-        cam.set<TransformComponent>(TransformComponent{ .position = Vec3(0.0f, 2.0f, -5.0f) });
-        cam.set<CameraComponent>(CameraComponent{ .fov_deg = 60.0f, .is_primary = true });
+        entity = m_active_scene.create_entity("MainCamera");
+        entity.set<TransformComponent>(TransformComponent{ .position = Vec3(0.0f, 2.0f, -6.0f) });
+        entity.set<CameraComponent>(CameraComponent{ .fov_deg = 60.0f, .is_primary = true });
+    } else if (type == "PlayerController") {
+        entity = m_active_scene.create_entity("PlayerController");
+        entity.set<TransformComponent>(TransformComponent{ .position = Vec3(0.0f, 1.5f, 0.0f) });
+        entity.set<MeshRendererComponent>(MeshRendererComponent{ .is_visible = true });
+        entity.set<AudioSourceComponent>(AudioSourceComponent{ .sound_name = "sfx_footstep.wav", .volume = 0.8f });
+        entity.set<ScriptComponent>(ScriptComponent{ .script_path = "/scripts/player_controller.lua", .class_name = "PlayerController" });
+        entity.set<RigidBodyComponent>(RigidBodyComponent{ .motion_type = BodyMotionType::Dynamic, .mass = 70.0f });
+        entity.set<ColliderComponent>(ColliderComponent{ .shape_type = ColliderShapeType::Capsule, .radius = 0.4f, .half_height = 0.5f });
     } else {
-        Entity e = m_active_scene.create_entity(type);
-        e.set<TransformComponent>(TransformComponent{ .position = Vec3(0.0f, 0.0f, 0.0f) });
+        entity = m_active_scene.create_entity(type);
+        entity.set<TransformComponent>(TransformComponent{ .position = Vec3(0.0f, 0.0f, 0.0f) });
+    }
+
+    if (entity.is_valid()) {
+        m_selection_context.select(entity.get_raw(), false);
+        m_command_history.push_executed_command(std::make_unique<EntityCreateCommand>(
+            m_active_scene, EntitySnapshot::capture(entity.get_raw(), m_active_scene)
+        ));
+        LOG_INFO("Editor", "Created entity '{}' ({})", entity.get_name(), type);
     }
 }
 
