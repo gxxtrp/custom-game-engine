@@ -13,6 +13,7 @@
 #include "editor/console_panel.h"
 #include "editor/profiler_panel.h"
 #include "editor/autosave_manager.h"
+#include "editor/game_exporter.h"
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <ImGuizmo.h>
@@ -63,6 +64,7 @@ public:
     ConsolePanel& get_console_panel() { return m_console_panel; }
     ProfilerPanel& get_profiler_panel() { return m_profiler_panel; }
     AutosaveManager& get_autosave_manager() { return m_autosave_manager; }
+    GameExporter& get_game_exporter() { return m_game_exporter; }
 
 private:
     EditorApp();
@@ -86,6 +88,7 @@ private:
     void render_profiler_panel();
     void render_environment_panel();
     void render_project_settings_dialog();
+    void render_packaging_dialog();
     void render_about_dialog();
 
     // Scene & Project helpers
@@ -141,6 +144,7 @@ private:
     bool m_show_profiler{true};
     bool m_show_environment{true};
     bool m_show_project_settings{false};
+    bool m_show_packaging_dialog{false};
     bool m_show_about_dialog{false};
     bool m_show_imgui_demo{false};
 
@@ -163,6 +167,7 @@ private:
     ProfilerPanel m_profiler_panel;
     ContentBrowserPanel m_content_browser;
     AutosaveManager m_autosave_manager;
+    GameExporter m_game_exporter;
 
     // Environment Panel State
     float m_sun_intensity{1.5f};

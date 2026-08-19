@@ -527,8 +527,8 @@ void EditorApp::render_main_menu_bar() {
             if (ImGui::MenuItem("Project Settings...")) {
                 m_show_project_settings = true;
             }
-            if (ImGui::MenuItem("Package Game...")) {
-                LOG_INFO("Editor", "Opening Game Packaging Wizard...");
+            if (ImGui::MenuItem("Package Project...", "Ctrl+Shift+B")) {
+                m_show_packaging_dialog = true;
             }
             ImGui::Separator();
             if (ImGui::MenuItem("Exit", "Alt+F4")) {
@@ -644,6 +644,7 @@ void EditorApp::render_main_menu_bar() {
             ImGui::MenuItem("Profiler", nullptr, &m_show_profiler);
             ImGui::MenuItem("Environment & Skybox", nullptr, &m_show_environment);
             ImGui::MenuItem("Project Settings", nullptr, &m_show_project_settings);
+            ImGui::MenuItem("Package Project", nullptr, &m_show_packaging_dialog);
             ImGui::Separator();
             ImGui::MenuItem("ImGui Demo Window", nullptr, &m_show_imgui_demo);
             ImGui::Separator();
@@ -952,6 +953,10 @@ void EditorApp::render_project_settings_dialog() {
     ImGui::End();
 }
 
+void EditorApp::render_packaging_dialog() {
+    m_game_exporter.render_dialog(m_active_scene, &m_show_packaging_dialog);
+}
+
 void EditorApp::render_about_dialog() {
     if (!m_show_about_dialog) return;
 
@@ -1030,6 +1035,8 @@ void EditorApp::step() {
                     }
                     m_selection_context.clear();
                 }
+            } else if (event.key.ctrl && event.key.shift && event.key.key == engine::core::KeyCode::B && !ImGui::GetIO().WantTextInput) {
+                m_show_packaging_dialog = true;
             } else if (event.key.key == engine::core::KeyCode::Escape && m_selection_context.has_selection()) {
                 m_selection_context.clear(); // Deselect entities
             } else if (event.key.key == engine::core::KeyCode::W && !ImGui::GetIO().WantTextInput) {
@@ -1073,6 +1080,7 @@ void EditorApp::step() {
     if (m_show_profiler) render_profiler_panel();
     if (m_show_environment) render_environment_panel();
     if (m_show_project_settings) render_project_settings_dialog();
+    if (m_show_packaging_dialog) render_packaging_dialog();
     if (m_show_about_dialog) render_about_dialog();
     if (m_show_imgui_demo) ImGui::ShowDemoWindow(&m_show_imgui_demo);
 

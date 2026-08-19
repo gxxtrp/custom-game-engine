@@ -14,6 +14,7 @@ add_executable(editor
     src/profiler_panel.cpp
     src/debug_draw_pass.cpp
     src/autosave_manager.cpp
+    src/game_exporter.cpp
 )
 
 target_include_directories(editor PRIVATE
