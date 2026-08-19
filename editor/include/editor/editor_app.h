@@ -75,6 +75,7 @@ public:
     InspectorPanel& get_inspector_panel() { return m_inspector_panel; }
     SceneViewport& get_viewport() { return m_viewport; }
     EditorStateManager& get_state_manager() { return m_state_manager; }
+    CommandHistory& get_command_history() { return m_command_history; }
 
 private:
     EditorApp();
@@ -158,6 +159,7 @@ private:
 
     // Subsystem Panels & Context
     EditorStateManager m_state_manager;
+    CommandHistory m_command_history;
     SelectionContext m_selection_context;
     OutlinerPanel m_outliner_panel;
     InspectorPanel m_inspector_panel;

@@ -6,6 +6,7 @@ add_executable(editor
     src/inspector_panel.cpp
     src/scene_viewport.cpp
     src/editor_state.cpp
+    src/command_history.cpp
 )
 
 target_include_directories(editor PRIVATE

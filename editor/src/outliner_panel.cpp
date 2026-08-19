@@ -9,7 +9,7 @@
 
 namespace editor {
 
-void OutlinerPanel::render(engine::scene::Scene& scene, SelectionContext& selection, bool* is_open) {
+void OutlinerPanel::render(engine::scene::Scene& scene, SelectionContext& selection, CommandHistory& history, bool* is_open) {
     if (is_open && !*is_open) return;
 
     if (ImGui::Begin("Outliner", is_open)) {
@@ -23,30 +23,30 @@ void OutlinerPanel::render(engine::scene::Scene& scene, SelectionContext& select
         }
 
         if (ImGui::BeginPopup("OutlinerTopCreatePopup")) {
-            if (ImGui::MenuItem("Empty Entity")) create_entity_preset(scene, selection, "EmptyEntity");
+            if (ImGui::MenuItem("Empty Entity")) create_entity_preset(scene, selection, history, "EmptyEntity");
             ImGui::Separator();
             if (ImGui::BeginMenu("3D Objects")) {
-                if (ImGui::MenuItem("Cube Mesh")) create_entity_preset(scene, selection, "Cube");
-                if (ImGui::MenuItem("Sphere Mesh")) create_entity_preset(scene, selection, "Sphere");
-                if (ImGui::MenuItem("Plane Surface")) create_entity_preset(scene, selection, "Plane");
-                if (ImGui::MenuItem("Cylinder Mesh")) create_entity_preset(scene, selection, "Cylinder");
+                if (ImGui::MenuItem("Cube Mesh")) create_entity_preset(scene, selection, history, "Cube");
+                if (ImGui::MenuItem("Sphere Mesh")) create_entity_preset(scene, selection, history, "Sphere");
+                if (ImGui::MenuItem("Plane Surface")) create_entity_preset(scene, selection, history, "Plane");
+                if (ImGui::MenuItem("Cylinder Mesh")) create_entity_preset(scene, selection, history, "Cylinder");
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Lighting")) {
-                if (ImGui::MenuItem("Directional Light")) create_entity_preset(scene, selection, "DirectionalLight");
-                if (ImGui::MenuItem("Point Light")) create_entity_preset(scene, selection, "PointLight");
-                if (ImGui::MenuItem("Spot Light")) create_entity_preset(scene, selection, "SpotLight");
+                if (ImGui::MenuItem("Directional Light")) create_entity_preset(scene, selection, history, "DirectionalLight");
+                if (ImGui::MenuItem("Point Light")) create_entity_preset(scene, selection, history, "PointLight");
+                if (ImGui::MenuItem("Spot Light")) create_entity_preset(scene, selection, history, "SpotLight");
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Audio")) {
-                if (ImGui::MenuItem("Audio Source")) create_entity_preset(scene, selection, "AudioSource");
-                if (ImGui::MenuItem("Audio Listener")) create_entity_preset(scene, selection, "AudioListener");
+                if (ImGui::MenuItem("Audio Source")) create_entity_preset(scene, selection, history, "AudioSource");
+                if (ImGui::MenuItem("Audio Listener")) create_entity_preset(scene, selection, history, "AudioListener");
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Gameplay & Scripting")) {
-                if (ImGui::MenuItem("Camera Entity")) create_entity_preset(scene, selection, "Camera");
-                if (ImGui::MenuItem("Player Controller")) create_entity_preset(scene, selection, "PlayerController");
-                if (ImGui::MenuItem("Physics Dynamic Box")) create_entity_preset(scene, selection, "DynamicBox");
+                if (ImGui::MenuItem("Camera Entity")) create_entity_preset(scene, selection, history, "Camera");
+                if (ImGui::MenuItem("Player Controller")) create_entity_preset(scene, selection, history, "PlayerController");
+                if (ImGui::MenuItem("Physics Dynamic Box")) create_entity_preset(scene, selection, history, "DynamicBox");
                 ImGui::EndMenu();
             }
             ImGui::EndPopup();
@@ -69,7 +69,7 @@ void OutlinerPanel::render(engine::scene::Scene& scene, SelectionContext& select
 
         // Draw Root Nodes recursively
         for (auto root : root_entities) {
-            draw_entity_node(root, scene, selection);
+            draw_entity_node(root, scene, selection, history);
         }
 
         // Drop Target on background (Unparents to Root)
@@ -78,10 +78,15 @@ void OutlinerPanel::render(engine::scene::Scene& scene, SelectionContext& select
                 uint64_t dragged_id = *static_cast<const uint64_t*>(payload->Data);
                 flecs::entity dragged = scene.get_world().entity(dragged_id);
                 if (dragged.is_valid() && dragged.is_alive() && dragged.parent().is_valid()) {
-                    dragged.remove(flecs::ChildOf, dragged.parent());
-                    if (dragged.has<engine::scene::TransformComponent>()) {
-                        dragged.ensure<engine::scene::TransformComponent>().is_dirty = true;
-                    }
+                    engine::assets::UUID dragged_uuid = dragged.has<engine::scene::UUIDComponent>()
+                        ? dragged.get<engine::scene::UUIDComponent>().uuid
+                        : engine::assets::UUID{};
+                    engine::assets::UUID old_parent_uuid = dragged.parent().has<engine::scene::UUIDComponent>()
+                        ? dragged.parent().get<engine::scene::UUIDComponent>().uuid
+                        : engine::assets::UUID{};
+                    history.execute_command(std::make_unique<EntityParentCommand>(
+                        scene, dragged_uuid, old_parent_uuid, engine::assets::UUID{}
+                    ));
                     LOG_INFO("Outliner", "Unparented entity '{}' to root", dragged.name().c_str());
                 }
             }
@@ -90,7 +95,7 @@ void OutlinerPanel::render(engine::scene::Scene& scene, SelectionContext& select
 
         // Right-Click Context Menu on Empty Background
         if (ImGui::BeginPopupContextWindow("OutlinerBackgroundContext", ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems)) {
-            draw_outliner_context_menu(scene, selection);
+            draw_outliner_context_menu(scene, selection, history);
             ImGui::EndPopup();
         }
 
@@ -107,14 +112,14 @@ void OutlinerPanel::render(engine::scene::Scene& scene, SelectionContext& select
                             scene.get_entity_count(), 
                             selection.count());
 
-        // --- Deferred Deletion ---
+        // --- Deferred Deletion via CommandHistory ---
         if (m_entity_to_delete != 0) {
             flecs::entity e = scene.get_world().entity(m_entity_to_delete);
             if (e.is_valid() && e.is_alive()) {
                 if (selection.is_selected(m_entity_to_delete)) {
                     selection.deselect(e);
                 }
-                e.destruct();
+                history.execute_command(std::make_unique<EntityDeleteCommand>(scene, e));
                 LOG_INFO("Outliner", "Deleted entity ID: {}", m_entity_to_delete);
             }
             m_entity_to_delete = 0;
@@ -123,7 +128,7 @@ void OutlinerPanel::render(engine::scene::Scene& scene, SelectionContext& select
     ImGui::End();
 }
 
-void OutlinerPanel::draw_entity_node(flecs::entity entity, engine::scene::Scene& scene, SelectionContext& selection) {
+void OutlinerPanel::draw_entity_node(flecs::entity entity, engine::scene::Scene& scene, SelectionContext& selection, CommandHistory& history) {
     if (!entity.is_valid() || !entity.is_alive()) return;
 
     std::string tag_name = entity.has<engine::scene::TagComponent>()
@@ -176,10 +181,18 @@ void OutlinerPanel::draw_entity_node(flecs::entity entity, engine::scene::Scene&
             if (dragged_id != entity.id()) {
                 flecs::entity dragged = entity.world().entity(dragged_id);
                 if (dragged.is_valid() && dragged.is_alive()) {
-                    dragged.child_of(entity);
-                    if (dragged.has<engine::scene::TransformComponent>()) {
-                        dragged.ensure<engine::scene::TransformComponent>().is_dirty = true;
-                    }
+                    engine::assets::UUID dragged_uuid = dragged.has<engine::scene::UUIDComponent>()
+                        ? dragged.get<engine::scene::UUIDComponent>().uuid
+                        : engine::assets::UUID{};
+                    engine::assets::UUID old_parent_uuid = dragged.parent().is_valid() && dragged.parent().has<engine::scene::UUIDComponent>()
+                        ? dragged.parent().get<engine::scene::UUIDComponent>().uuid
+                        : engine::assets::UUID{};
+                    engine::assets::UUID new_parent_uuid = entity.has<engine::scene::UUIDComponent>()
+                        ? entity.get<engine::scene::UUIDComponent>().uuid
+                        : engine::assets::UUID{};
+                    history.execute_command(std::make_unique<EntityParentCommand>(
+                        scene, dragged_uuid, old_parent_uuid, new_parent_uuid
+                    ));
                     LOG_INFO("Outliner", "Reparented '{}' under '{}'", dragged.name().c_str(), tag_name);
                 }
             }
@@ -190,13 +203,13 @@ void OutlinerPanel::draw_entity_node(flecs::entity entity, engine::scene::Scene&
     // 4. Entity Context Menu
     if (ImGui::BeginPopupContextItem()) {
         if (ImGui::MenuItem("Create Child Entity")) {
-            create_entity_preset(scene, selection, "EmptyEntity", entity);
+            create_entity_preset(scene, selection, history, "EmptyEntity", entity);
         }
         if (ImGui::BeginMenu("Create Child 3D Object")) {
-            if (ImGui::MenuItem("Cube")) create_entity_preset(scene, selection, "Cube", entity);
-            if (ImGui::MenuItem("Sphere")) create_entity_preset(scene, selection, "Sphere", entity);
-            if (ImGui::MenuItem("Plane")) create_entity_preset(scene, selection, "Plane", entity);
-            if (ImGui::MenuItem("Cylinder")) create_entity_preset(scene, selection, "Cylinder", entity);
+            if (ImGui::MenuItem("Cube")) create_entity_preset(scene, selection, history, "Cube", entity);
+            if (ImGui::MenuItem("Sphere")) create_entity_preset(scene, selection, history, "Sphere", entity);
+            if (ImGui::MenuItem("Plane")) create_entity_preset(scene, selection, history, "Plane", entity);
+            if (ImGui::MenuItem("Cylinder")) create_entity_preset(scene, selection, history, "Cylinder", entity);
             ImGui::EndMenu();
         }
         ImGui::Separator();
@@ -221,12 +234,20 @@ void OutlinerPanel::draw_entity_node(flecs::entity entity, engine::scene::Scene&
                 copy.get_raw().child_of(entity.parent());
             }
             selection.select(copy.get_raw(), false);
+            history.push_executed_command(std::make_unique<EntityCreateCommand>(
+                scene, EntitySnapshot::capture(copy.get_raw(), scene)
+            ));
         }
         if (entity.parent().is_valid() && ImGui::MenuItem("Unparent (Move to Root)")) {
-            entity.remove(flecs::ChildOf, entity.parent());
-            if (entity.has<engine::scene::TransformComponent>()) {
-                entity.ensure<engine::scene::TransformComponent>().is_dirty = true;
-            }
+            engine::assets::UUID entity_uuid = entity.has<engine::scene::UUIDComponent>()
+                ? entity.get<engine::scene::UUIDComponent>().uuid
+                : engine::assets::UUID{};
+            engine::assets::UUID old_parent_uuid = entity.parent().has<engine::scene::UUIDComponent>()
+                ? entity.parent().get<engine::scene::UUIDComponent>().uuid
+                : engine::assets::UUID{};
+            history.execute_command(std::make_unique<EntityParentCommand>(
+                scene, entity_uuid, old_parent_uuid, engine::assets::UUID{}
+            ));
         }
         ImGui::Separator();
         if (ImGui::MenuItem("Delete", "Delete")) {
@@ -238,42 +259,42 @@ void OutlinerPanel::draw_entity_node(flecs::entity entity, engine::scene::Scene&
     // 5. Recursive Children Traversal
     if (node_open) {
         entity.children([&](flecs::entity child) {
-            draw_entity_node(child, scene, selection);
+            draw_entity_node(child, scene, selection, history);
         });
         ImGui::TreePop();
     }
 }
 
-void OutlinerPanel::draw_outliner_context_menu(engine::scene::Scene& scene, SelectionContext& selection) {
+void OutlinerPanel::draw_outliner_context_menu(engine::scene::Scene& scene, SelectionContext& selection, CommandHistory& history) {
     if (ImGui::MenuItem("Create Empty Entity")) {
-        create_entity_preset(scene, selection, "EmptyEntity");
+        create_entity_preset(scene, selection, history, "EmptyEntity");
     }
     ImGui::Separator();
     if (ImGui::BeginMenu("3D Objects")) {
-        if (ImGui::MenuItem("Cube")) create_entity_preset(scene, selection, "Cube");
-        if (ImGui::MenuItem("Sphere")) create_entity_preset(scene, selection, "Sphere");
-        if (ImGui::MenuItem("Plane")) create_entity_preset(scene, selection, "Plane");
-        if (ImGui::MenuItem("Cylinder")) create_entity_preset(scene, selection, "Cylinder");
+        if (ImGui::MenuItem("Cube")) create_entity_preset(scene, selection, history, "Cube");
+        if (ImGui::MenuItem("Sphere")) create_entity_preset(scene, selection, history, "Sphere");
+        if (ImGui::MenuItem("Plane")) create_entity_preset(scene, selection, history, "Plane");
+        if (ImGui::MenuItem("Cylinder")) create_entity_preset(scene, selection, history, "Cylinder");
         ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("Lights")) {
-        if (ImGui::MenuItem("Directional Light")) create_entity_preset(scene, selection, "DirectionalLight");
-        if (ImGui::MenuItem("Point Light")) create_entity_preset(scene, selection, "PointLight");
-        if (ImGui::MenuItem("Spot Light")) create_entity_preset(scene, selection, "SpotLight");
+        if (ImGui::MenuItem("Directional Light")) create_entity_preset(scene, selection, history, "DirectionalLight");
+        if (ImGui::MenuItem("Point Light")) create_entity_preset(scene, selection, history, "PointLight");
+        if (ImGui::MenuItem("Spot Light")) create_entity_preset(scene, selection, history, "SpotLight");
         ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("Audio")) {
-        if (ImGui::MenuItem("Audio Source")) create_entity_preset(scene, selection, "AudioSource");
-        if (ImGui::MenuItem("Audio Listener")) create_entity_preset(scene, selection, "AudioListener");
+        if (ImGui::MenuItem("Audio Source")) create_entity_preset(scene, selection, history, "AudioSource");
+        if (ImGui::MenuItem("Audio Listener")) create_entity_preset(scene, selection, history, "AudioListener");
         ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("Camera")) {
-        if (ImGui::MenuItem("Perspective Camera")) create_entity_preset(scene, selection, "Camera");
+        if (ImGui::MenuItem("Perspective Camera")) create_entity_preset(scene, selection, history, "Camera");
         ImGui::EndMenu();
     }
 }
 
-void OutlinerPanel::create_entity_preset(engine::scene::Scene& scene, SelectionContext& selection, std::string_view preset, flecs::entity parent) {
+void OutlinerPanel::create_entity_preset(engine::scene::Scene& scene, SelectionContext& selection, CommandHistory& history, std::string_view preset, flecs::entity parent) {
     using namespace engine::core;
     using namespace engine::scene;
     using namespace engine::physics;
@@ -371,6 +392,9 @@ void OutlinerPanel::create_entity_preset(engine::scene::Scene& scene, SelectionC
     }
 
     selection.select(entity.get_raw(), false);
+    history.push_executed_command(std::make_unique<EntityCreateCommand>(
+        scene, EntitySnapshot::capture(entity.get_raw(), scene)
+    ));
     LOG_INFO("Outliner", "Created entity preset '{}' (ID: {})", preset, entity.get_id());
 }
 

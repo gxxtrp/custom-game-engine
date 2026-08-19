@@ -147,7 +147,7 @@ void SceneViewport::render_overlay_bar() {
     ImGui::PopStyleVar(2);
 }
 
-void SceneViewport::render_gizmo(engine::scene::Scene& scene, SelectionContext& selection) {
+void SceneViewport::render_gizmo(engine::scene::Scene& scene, SelectionContext& selection, CommandHistory& history) {
     if (!selection.has_selection() || m_gizmo_op == static_cast<ImGuizmo::OPERATION>(0)) return;
 
     flecs::entity primary = selection.get_primary();
@@ -194,7 +194,19 @@ void SceneViewport::render_gizmo(engine::scene::Scene& scene, SelectionContext& 
         }
     }
 
+    // Capture initial transform before starting gizmo drag
+    if (!m_is_using_gizmo && ImGuizmo::IsOver()) {
+        m_gizmo_drag_start_transform = transform;
+        m_gizmo_drag_entity_uuid = primary.has<engine::scene::UUIDComponent>() 
+            ? primary.get<engine::scene::UUIDComponent>().uuid 
+            : engine::assets::UUID{};
+    }
+
     if (ImGuizmo::Manipulate(view_matrix, proj_matrix, m_gizmo_op, m_gizmo_mode, model_matrix, nullptr, snap_ptr)) {
+        if (!m_is_using_gizmo) {
+            m_is_using_gizmo = true;
+        }
+
         engine::core::Mat4 updated_model;
         for (int c = 0; c < 4; ++c) {
             for (int r = 0; r < 4; ++r) {
@@ -210,6 +222,16 @@ void SceneViewport::render_gizmo(engine::scene::Scene& scene, SelectionContext& 
         transform.rotation = new_rot;
         transform.scale = new_scale;
         transform.is_dirty = true;
+    }
+
+    // When gizmo drag finishes, record Undo/Redo command
+    if (m_is_using_gizmo && !ImGuizmo::IsUsing()) {
+        m_is_using_gizmo = false;
+        if (m_gizmo_drag_entity_uuid.is_valid()) {
+            history.push_executed_command(std::make_unique<EntityTransformCommand>(
+                scene, m_gizmo_drag_entity_uuid, m_gizmo_drag_start_transform, transform
+            ));
+        }
     }
 }
 
@@ -277,7 +299,7 @@ void SceneViewport::perform_raycast_picking(engine::scene::Scene& scene, Selecti
     }
 }
 
-void SceneViewport::render(engine::scene::Scene& scene, SelectionContext& selection, float dt, bool* is_open) {
+void SceneViewport::render(engine::scene::Scene& scene, SelectionContext& selection, CommandHistory& history, float dt, bool* is_open) {
     if (is_open && !*is_open) return;
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
@@ -324,7 +346,7 @@ void SceneViewport::render(engine::scene::Scene& scene, SelectionContext& select
         render_overlay_bar();
 
         // 4. Render ImGuizmo Manipulator
-        render_gizmo(scene, selection);
+        render_gizmo(scene, selection, history);
 
         // 5. Handle Mouse Raycast Picking on Left Click
         if (m_is_hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !ImGuizmo::IsUsing() && !ImGuizmo::IsOver()) {

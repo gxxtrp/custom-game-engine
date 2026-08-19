@@ -416,6 +416,7 @@ void EditorApp::new_scene() {
     }
     m_active_scene.clear();
     m_selection_context.clear();
+    m_command_history.clear();
     m_current_scene_path = "/maps/untitled.map";
     LOG_INFO("Editor", "Created new empty scene");
 }
@@ -424,6 +425,7 @@ void EditorApp::open_scene(const std::string& path) {
     if (!m_state_manager.is_editing()) {
         set_mode(EditorMode::Edit);
     }
+    m_command_history.clear();
     m_current_scene_path = path;
     LOG_INFO("Editor", "Opened scene: {}", path);
 }
@@ -584,24 +586,52 @@ void EditorApp::render_main_menu_bar() {
 
         // --- EDIT MENU ---
         if (ImGui::BeginMenu("Edit")) {
-            if (ImGui::MenuItem("Undo", "Ctrl+Z")) {
-                LOG_INFO("Editor", "Undo action performed");
+            std::string undo_label = m_command_history.can_undo()
+                ? std::format("Undo {}##Menu", m_command_history.get_undo_name())
+                : "Undo##Menu";
+            if (ImGui::MenuItem(undo_label.c_str(), "Ctrl+Z", false, m_command_history.can_undo())) {
+                m_command_history.undo();
             }
-            if (ImGui::MenuItem("Redo", "Ctrl+Y")) {
-                LOG_INFO("Editor", "Redo action performed");
+
+            std::string redo_label = m_command_history.can_redo()
+                ? std::format("Redo {}##Menu", m_command_history.get_redo_name())
+                : "Redo##Menu";
+            if (ImGui::MenuItem(redo_label.c_str(), "Ctrl+Y", false, m_command_history.can_redo())) {
+                m_command_history.redo();
             }
+
             ImGui::Separator();
             if (ImGui::MenuItem("Cut", "Ctrl+X")) {}
             if (ImGui::MenuItem("Copy", "Ctrl+C")) {}
             if (ImGui::MenuItem("Paste", "Ctrl+V")) {}
             if (ImGui::MenuItem("Duplicate", "Ctrl+D")) {
-                LOG_INFO("Editor", "Duplicated selected entity");
+                if (m_selection_context.has_selection()) {
+                    auto primary = m_selection_context.get_primary();
+                    if (primary.is_valid() && primary.is_alive()) {
+                        std::string tag = primary.has<engine::scene::TagComponent>() 
+                            ? primary.get<engine::scene::TagComponent>().name 
+                            : primary.name().c_str();
+                        auto copy = m_active_scene.create_entity(tag + "_Copy");
+                        if (primary.has<engine::scene::TransformComponent>()) copy.set<engine::scene::TransformComponent>(primary.get<engine::scene::TransformComponent>());
+                        if (primary.has<engine::scene::MeshRendererComponent>()) copy.set<engine::scene::MeshRendererComponent>(primary.get<engine::scene::MeshRendererComponent>());
+                        if (primary.has<engine::scene::DirectionalLightComponent>()) copy.set<engine::scene::DirectionalLightComponent>(primary.get<engine::scene::DirectionalLightComponent>());
+                        if (primary.has<engine::scene::PointLightComponent>()) copy.set<engine::scene::PointLightComponent>(primary.get<engine::scene::PointLightComponent>());
+                        if (primary.has<engine::scene::CameraComponent>()) copy.set<engine::scene::CameraComponent>(primary.get<engine::scene::CameraComponent>());
+                        if (primary.parent().is_valid()) copy.get_raw().child_of(primary.parent());
+                        m_selection_context.select(copy.get_raw(), false);
+                        m_command_history.push_executed_command(std::make_unique<EntityCreateCommand>(
+                            m_active_scene, EntitySnapshot::capture(copy.get_raw(), m_active_scene)
+                        ));
+                    }
+                }
             }
             if (ImGui::MenuItem("Delete", "Delete")) {
                 if (m_selection_context.has_selection()) {
                     for (uint64_t eid : m_selection_context.get_all_selected()) {
                         auto e = m_active_scene.get_world().entity(eid);
-                        if (e.is_valid() && e.is_alive()) e.destruct();
+                        if (e.is_valid() && e.is_alive()) {
+                            m_command_history.execute_command(std::make_unique<EntityDeleteCommand>(m_active_scene, e));
+                        }
                     }
                     m_selection_context.clear();
                 }
@@ -881,11 +911,11 @@ void EditorApp::render_viewport_panel() {
         create_or_resize_viewport_framebuffer(req_w, req_h);
     }
 
-    m_viewport.render(m_active_scene, m_selection_context, dt, &m_show_viewport);
+    m_viewport.render(m_active_scene, m_selection_context, m_command_history, dt, &m_show_viewport);
 }
 
 void EditorApp::render_outliner_panel() {
-    m_outliner_panel.render(m_active_scene, m_selection_context, &m_show_outliner);
+    m_outliner_panel.render(m_active_scene, m_selection_context, m_command_history, &m_show_outliner);
 }
 
 void EditorApp::render_inspector_panel() {
@@ -1183,7 +1213,45 @@ void EditorApp::step() {
         engine::input::InputManager::instance().process_event(event);
 
         if (event.type == engine::core::EventType::KeyDown) {
-            if (event.key.key == engine::core::KeyCode::Escape && m_selection_context.has_selection()) {
+            if (event.key.ctrl && event.key.key == engine::core::KeyCode::Z && !ImGui::GetIO().WantTextInput) {
+                if (event.key.shift) {
+                    m_command_history.redo();
+                } else {
+                    m_command_history.undo();
+                }
+            } else if (event.key.ctrl && event.key.key == engine::core::KeyCode::Y && !ImGui::GetIO().WantTextInput) {
+                m_command_history.redo();
+            } else if (event.key.ctrl && event.key.key == engine::core::KeyCode::D && !ImGui::GetIO().WantTextInput) {
+                if (m_selection_context.has_selection()) {
+                    auto primary = m_selection_context.get_primary();
+                    if (primary.is_valid() && primary.is_alive()) {
+                        std::string tag = primary.has<engine::scene::TagComponent>() 
+                            ? primary.get<engine::scene::TagComponent>().name 
+                            : primary.name().c_str();
+                        auto copy = m_active_scene.create_entity(tag + "_Copy");
+                        if (primary.has<engine::scene::TransformComponent>()) copy.set<engine::scene::TransformComponent>(primary.get<engine::scene::TransformComponent>());
+                        if (primary.has<engine::scene::MeshRendererComponent>()) copy.set<engine::scene::MeshRendererComponent>(primary.get<engine::scene::MeshRendererComponent>());
+                        if (primary.has<engine::scene::DirectionalLightComponent>()) copy.set<engine::scene::DirectionalLightComponent>(primary.get<engine::scene::DirectionalLightComponent>());
+                        if (primary.has<engine::scene::PointLightComponent>()) copy.set<engine::scene::PointLightComponent>(primary.get<engine::scene::PointLightComponent>());
+                        if (primary.has<engine::scene::CameraComponent>()) copy.set<engine::scene::CameraComponent>(primary.get<engine::scene::CameraComponent>());
+                        if (primary.parent().is_valid()) copy.get_raw().child_of(primary.parent());
+                        m_selection_context.select(copy.get_raw(), false);
+                        m_command_history.push_executed_command(std::make_unique<EntityCreateCommand>(
+                            m_active_scene, EntitySnapshot::capture(copy.get_raw(), m_active_scene)
+                        ));
+                    }
+                }
+            } else if (event.key.key == engine::core::KeyCode::Delete && !ImGui::GetIO().WantTextInput) {
+                if (m_selection_context.has_selection()) {
+                    for (uint64_t eid : m_selection_context.get_all_selected()) {
+                        auto e = m_active_scene.get_world().entity(eid);
+                        if (e.is_valid() && e.is_alive()) {
+                            m_command_history.execute_command(std::make_unique<EntityDeleteCommand>(m_active_scene, e));
+                        }
+                    }
+                    m_selection_context.clear();
+                }
+            } else if (event.key.key == engine::core::KeyCode::Escape && m_selection_context.has_selection()) {
                 m_selection_context.clear(); // Deselect entities
             } else if (event.key.key == engine::core::KeyCode::W && !ImGui::GetIO().WantTextInput) {
                 m_current_gizmo_op = ImGuizmo::TRANSLATE;

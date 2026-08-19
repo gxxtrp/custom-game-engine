@@ -4,6 +4,7 @@
 #include "engine/scene/scene.h"
 #include "engine/ui/editor_camera.h"
 #include "editor/selection_context.h"
+#include "editor/command_history.h"
 #include <vulkan/vulkan.h>
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -27,7 +28,7 @@ public:
 
     void destroy();
     void set_texture(VkSampler sampler, VkImageView image_view, VkImageLayout layout);
-    void render(engine::scene::Scene& scene, SelectionContext& selection, float dt, bool* is_open = nullptr);
+    void render(engine::scene::Scene& scene, SelectionContext& selection, CommandHistory& history, float dt, bool* is_open = nullptr);
 
     void focus_on_selection(SelectionContext& selection);
     void focus_on_entity(flecs::entity entity);
@@ -54,7 +55,7 @@ public:
 
 private:
     void render_overlay_bar();
-    void render_gizmo(engine::scene::Scene& scene, SelectionContext& selection);
+    void render_gizmo(engine::scene::Scene& scene, SelectionContext& selection, CommandHistory& history);
     void perform_raycast_picking(engine::scene::Scene& scene, SelectionContext& selection, const ImVec2& mouse_pos_in_viewport);
 
     engine::ui::EditorCamera m_camera;
@@ -71,6 +72,10 @@ private:
     float m_snap_translation{0.5f};
     float m_snap_rotation{45.0f};
     float m_snap_scale{0.5f};
+
+    bool m_is_using_gizmo{false};
+    engine::scene::TransformComponent m_gizmo_drag_start_transform{};
+    engine::assets::UUID m_gizmo_drag_entity_uuid{};
 
     ViewportShadingMode m_shading_mode{ViewportShadingMode::Lit};
 };
