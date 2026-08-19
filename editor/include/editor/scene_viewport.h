@@ -5,6 +5,7 @@
 #include "engine/ui/editor_camera.h"
 #include "editor/selection_context.h"
 #include "editor/command_history.h"
+#include "editor/debug_draw_pass.h"
 #include <vulkan/vulkan.h>
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -53,6 +54,9 @@ public:
     ViewportShadingMode get_shading_mode() const { return m_shading_mode; }
     void set_shading_mode(ViewportShadingMode mode) { m_shading_mode = mode; }
 
+    DebugDrawPass& get_debug_draw_pass() { return m_debug_draw_pass; }
+    const DebugDrawPass& get_debug_draw_pass() const { return m_debug_draw_pass; }
+
 private:
     void render_overlay_bar();
     void render_gizmo(engine::scene::Scene& scene, SelectionContext& selection, CommandHistory& history);
@@ -78,6 +82,7 @@ private:
     engine::assets::UUID m_gizmo_drag_entity_uuid{};
 
     ViewportShadingMode m_shading_mode{ViewportShadingMode::Lit};
+    DebugDrawPass m_debug_draw_pass;
 };
 
 } // namespace editor

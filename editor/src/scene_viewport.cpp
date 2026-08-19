@@ -348,7 +348,10 @@ void SceneViewport::render(engine::scene::Scene& scene, SelectionContext& select
         // 3. Render Overlay Bar
         render_overlay_bar();
 
-        // 4. Render ImGuizmo Manipulator
+        // 4. Render Physics & Debug Wireframe Pass
+        m_debug_draw_pass.render_debug_overlay(scene, m_camera, m_position, m_size, selection);
+
+        // 5. Render ImGuizmo Manipulator
         render_gizmo(scene, selection, history);
 
         // 5. Handle Mouse Raycast Picking on Left Click

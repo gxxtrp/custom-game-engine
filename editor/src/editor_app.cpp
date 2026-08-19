@@ -12,59 +12,11 @@
 namespace editor {
 
 // ============================================================================
-// EditorConsoleSink Implementation
-// ============================================================================
-
-EditorConsoleSink::EditorConsoleSink(size_t max_entries)
-    : m_max_entries(max_entries) {}
-
-void EditorConsoleSink::log(const engine::core::LogMessage& message) {
-    std::lock_guard<std::mutex> lock(m_mutex);
-
-    // Format timestamp
-    auto now_time_t = std::chrono::system_clock::to_time_t(message.timestamp);
-    std::tm tm_buf{};
-#if defined(_WIN32)
-    localtime_s(&tm_buf, &now_time_t);
-#else
-    localtime_r(&now_time_t, &tm_buf);
-#endif
-    char time_str[32];
-    std::strftime(time_str, sizeof(time_str), "%H:%M:%S", &tm_buf);
-
-    EditorConsoleEntry entry{
-        .level = message.level,
-        .category = std::string(message.category),
-        .message = message.message,
-        .file = std::string(message.file),
-        .line = message.line,
-        .timestamp = std::string(time_str)
-    };
-
-    m_entries.push_back(std::move(entry));
-    if (m_entries.size() > m_max_entries) {
-        m_entries.pop_front();
-    }
-}
-
-std::vector<EditorConsoleEntry> EditorConsoleSink::get_entries() const {
-    std::lock_guard<std::mutex> lock(m_mutex);
-    return std::vector<EditorConsoleEntry>(m_entries.begin(), m_entries.end());
-}
-
-void EditorConsoleSink::clear() {
-    std::lock_guard<std::mutex> lock(m_mutex);
-    m_entries.clear();
-}
-
 // ============================================================================
 // EditorApp Implementation
 // ============================================================================
 
 EditorApp::EditorApp() : m_active_scene("DefaultEditorScene") {
-    for (size_t i = 0; i < PROFILER_SAMPLE_COUNT; ++i) {
-        m_frame_time_history[i] = 16.6f;
-    }
 }
 
 EditorApp::~EditorApp() {
@@ -154,6 +106,7 @@ bool EditorApp::init(const EditorAppDesc& desc) {
     // Attach Editor Console Log Sink
     m_console_sink = std::make_shared<EditorConsoleSink>(2000);
     engine::core::Logger::instance().add_sink(m_console_sink);
+    m_console_panel.set_sink(m_console_sink);
 
     LOG_INFO("Editor", "==================================================");
     LOG_INFO("Editor", "   Initializing Modern Game Engine Standalone Editor ");
@@ -928,138 +881,11 @@ void EditorApp::render_content_browser_panel() {
 }
 
 void EditorApp::render_console_panel() {
-    if (ImGui::Begin("Console", &m_show_console)) {
-        // Top Toolbar: Clear, Filter toggles, Search filter
-        if (ImGui::Button("Clear")) {
-            if (m_console_sink) m_console_sink->clear();
-        }
-
-        ImGui::SameLine();
-        ImGui::Checkbox("Info", &m_console_show_info);
-        ImGui::SameLine();
-        ImGui::Checkbox("Warnings", &m_console_show_warn);
-        ImGui::SameLine();
-        ImGui::Checkbox("Errors", &m_console_show_error);
-
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(180.0f);
-        ImGui::InputTextWithHint("##ConsoleFilter", "Search logs...", m_console_filter, sizeof(m_console_filter));
-
-        ImGui::SameLine();
-        ImGui::Checkbox("Auto-scroll", &m_console_auto_scroll);
-
-        ImGui::Separator();
-
-        // Log feed table
-        if (ImGui::BeginTable("ConsoleLogTable", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_BordersInnerV)) {
-            ImGui::TableSetupColumn("Time", ImGuiTableColumnFlags_WidthFixed, 65.0f);
-            ImGui::TableSetupColumn("Level", ImGuiTableColumnFlags_WidthFixed, 60.0f);
-            ImGui::TableSetupColumn("Category", ImGuiTableColumnFlags_WidthFixed, 80.0f);
-            ImGui::TableSetupColumn("Message", ImGuiTableColumnFlags_WidthStretch);
-            ImGui::TableHeadersRow();
-
-            if (m_console_sink) {
-                auto entries = m_console_sink->get_entries();
-                for (const auto& entry : entries) {
-                    if (entry.level == engine::core::LogLevel::Info && !m_console_show_info) continue;
-                    if (entry.level == engine::core::LogLevel::Warn && !m_console_show_warn) continue;
-                    if ((entry.level == engine::core::LogLevel::Error || entry.level == engine::core::LogLevel::Fatal) && !m_console_show_error) continue;
-
-                    if (m_console_filter[0] != '\0' && entry.message.find(m_console_filter) == std::string::npos) {
-                        continue;
-                    }
-
-                    ImGui::TableNextRow();
-
-                    // Timestamp
-                    ImGui::TableNextColumn();
-                    ImGui::TextDisabled("%s", entry.timestamp.c_str());
-
-                    // Level Badge
-                    ImGui::TableNextColumn();
-                    if (entry.level == engine::core::LogLevel::Info) {
-                        ImGui::TextColored(ImVec4(0.4f, 0.7f, 1.0f, 1.0f), "INFO");
-                    } else if (entry.level == engine::core::LogLevel::Warn) {
-                        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "WARN");
-                    } else if (entry.level == engine::core::LogLevel::Error || entry.level == engine::core::LogLevel::Fatal) {
-                        ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "ERROR");
-                    } else {
-                        ImGui::TextDisabled("DEBUG");
-                    }
-
-                    // Category
-                    ImGui::TableNextColumn();
-                    ImGui::Text("%s", entry.category.c_str());
-
-                    // Message
-                    ImGui::TableNextColumn();
-                    ImGui::TextUnformatted(entry.message.c_str());
-                }
-
-                if (m_console_auto_scroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY()) {
-                    ImGui::SetScrollHereY(1.0f);
-                }
-            }
-
-            ImGui::EndTable();
-        }
-    }
-    ImGui::End();
+    m_console_panel.render(&m_show_console);
 }
 
 void EditorApp::render_profiler_panel() {
-    if (ImGui::Begin("Profiler", &m_show_profiler)) {
-        float dt = m_timer.delta_time();
-        float fps = static_cast<float>(m_timer.fps());
-
-        // Summary cards
-        ImGui::Columns(4, "ProfilerCards", false);
-        ImGui::Text("FPS: %.0f", fps);
-        ImGui::NextColumn();
-        ImGui::Text("Delta Time: %.2f ms", dt * 1000.0f);
-        ImGui::NextColumn();
-        ImGui::Text("Draw Calls: 4");
-        ImGui::NextColumn();
-        ImGui::Text("Active Entities: %zu", m_active_scene.get_entity_count());
-        ImGui::Columns(1);
-
-        ImGui::Separator();
-
-        // Frame Time Graph
-        m_frame_time_history[m_frame_time_offset] = dt * 1000.0f;
-        m_frame_time_offset = (m_frame_time_offset + 1) % PROFILER_SAMPLE_COUNT;
-
-        ImGui::Text("Frame Time History (ms)");
-        ImGui::PlotLines("##FramePlot", m_frame_time_history, static_cast<int>(PROFILER_SAMPLE_COUNT), static_cast<int>(m_frame_time_offset), nullptr, 0.0f, 33.3f, ImVec2(-1, 60));
-
-        ImGui::Separator();
-
-        // Subsystem Breakdown Table
-        if (ImGui::BeginTable("SubsystemProfileTable", 2, ImGuiTableFlags_BordersInnerV)) {
-            ImGui::TableSetupColumn("Metric", ImGuiTableColumnFlags_WidthStretch);
-            ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, 140.0f);
-            ImGui::TableHeadersRow();
-
-            ImGui::TableNextRow();
-            ImGui::TableNextColumn(); ImGui::Text("Vulkan RHI Backend");
-            ImGui::TableNextColumn(); ImGui::Text("Vulkan 1.3 Dynamic");
-
-            ImGui::TableNextRow();
-            ImGui::TableNextColumn(); ImGui::Text("Jolt Physics Worker Threads");
-            ImGui::TableNextColumn(); ImGui::Text("4 Threads");
-
-            ImGui::TableNextRow();
-            ImGui::TableNextColumn(); ImGui::Text("Job System Active Tasks");
-            ImGui::TableNextColumn(); ImGui::Text("0 Tasks");
-
-            ImGui::TableNextRow();
-            ImGui::TableNextColumn(); ImGui::Text("VRAM Allocated");
-            ImGui::TableNextColumn(); ImGui::Text("184 MB");
-
-            ImGui::EndTable();
-        }
-    }
-    ImGui::End();
+    m_profiler_panel.render(m_active_scene, static_cast<float>(m_timer.delta_time()), &m_show_profiler);
 }
 
 void EditorApp::render_environment_panel() {
@@ -1224,8 +1050,9 @@ void EditorApp::step() {
 
     float dt = static_cast<float>(m_timer.delta_time());
 
-    // 2. Simulation Tick via EditorStateManager
+    // 2. Simulation Tick via EditorStateManager & Autosave
     m_state_manager.update(m_active_scene, dt);
+    m_autosave_manager.update(m_active_scene, dt);
 
     // 3. ImGui New Frame & DockSpace
     ImGui_ImplVulkan_NewFrame();

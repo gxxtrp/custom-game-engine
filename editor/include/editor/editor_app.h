@@ -10,6 +10,9 @@
 #include "editor/content_browser.h"
 #include "editor/prefab_manager.h"
 #include "editor/asset_importer.h"
+#include "editor/console_panel.h"
+#include "editor/profiler_panel.h"
+#include "editor/autosave_manager.h"
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <ImGuizmo.h>
@@ -22,30 +25,6 @@
 #include <chrono>
 
 namespace editor {
-
-struct EditorConsoleEntry {
-    engine::core::LogLevel level{engine::core::LogLevel::Info};
-    std::string category;
-    std::string message;
-    std::string file;
-    uint32_t line{0};
-    std::string timestamp;
-};
-
-class EditorConsoleSink : public engine::core::ILogSink {
-public:
-    explicit EditorConsoleSink(size_t max_entries = 2000);
-    void log(const engine::core::LogMessage& message) override;
-    void flush() override {}
-
-    std::vector<EditorConsoleEntry> get_entries() const;
-    void clear();
-
-private:
-    size_t m_max_entries;
-    mutable std::mutex m_mutex;
-    std::deque<EditorConsoleEntry> m_entries;
-};
 
 struct EditorAppDesc {
     std::string title{"Modern Game Engine Editor"};
@@ -81,6 +60,9 @@ public:
     EditorStateManager& get_state_manager() { return m_state_manager; }
     CommandHistory& get_command_history() { return m_command_history; }
     ContentBrowserPanel& get_content_browser() { return m_content_browser; }
+    ConsolePanel& get_console_panel() { return m_console_panel; }
+    ProfilerPanel& get_profiler_panel() { return m_profiler_panel; }
+    AutosaveManager& get_autosave_manager() { return m_autosave_manager; }
 
 private:
     EditorApp();
@@ -176,20 +158,11 @@ private:
     bool m_use_snap{false};
     float m_camera_speed{1.0f};
 
-    // Console Panel State
-    bool m_console_show_info{true};
-    bool m_console_show_warn{true};
-    bool m_console_show_error{true};
-    bool m_console_auto_scroll{true};
-    char m_console_filter[128]{""};
-
-    // Profiler State
-    static constexpr size_t PROFILER_SAMPLE_COUNT = 120;
-    float m_frame_time_history[PROFILER_SAMPLE_COUNT]{0.0f};
-    size_t m_frame_time_offset{0};
-
-    // Content Browser
+    // Subsystem Panels
+    ConsolePanel m_console_panel;
+    ProfilerPanel m_profiler_panel;
     ContentBrowserPanel m_content_browser;
+    AutosaveManager m_autosave_manager;
 
     // Environment Panel State
     float m_sun_intensity{1.5f};

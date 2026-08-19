@@ -10,6 +10,10 @@ add_executable(editor
     src/prefab_manager.cpp
     src/asset_importer.cpp
     src/content_browser.cpp
+    src/console_panel.cpp
+    src/profiler_panel.cpp
+    src/debug_draw_pass.cpp
+    src/autosave_manager.cpp
 )
 
 target_include_directories(editor PRIVATE
