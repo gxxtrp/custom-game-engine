@@ -128,6 +128,7 @@ sandbox_phase0.log
 *.sln.docstates
 *.VC.db
 *.VC.opendb
+.vscode
 
 # Clangd & Language Server Index Caches
 .clangd/
