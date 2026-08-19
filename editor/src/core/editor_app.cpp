@@ -1,4 +1,4 @@
-#include "editor/editor_app.h"
+#include "editor/core/editor_app.h"
 #include "engine/renderer/embedded_shaders.h"
 #include <imgui.h>
 #include <imgui_internal.h>

@@ -1,4 +1,4 @@
-#include "editor/debug_draw_pass.h"
+#include "editor/tools/debug_draw_pass.h"
 #include "engine/scene/components.h"
 #include "engine/physics/physics_components.h"
 #include <cmath>

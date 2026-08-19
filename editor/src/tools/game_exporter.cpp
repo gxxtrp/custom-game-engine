@@ -1,4 +1,4 @@
-#include "editor/game_exporter.h"
+#include "editor/tools/game_exporter.h"
 #include "engine/vfs/pak_archive.h"
 #include "engine/vfs/vfs.h"
 #include "engine/project/project.h"

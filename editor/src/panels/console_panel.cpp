@@ -1,4 +1,4 @@
-#include "editor/console_panel.h"
+#include "editor/panels/console_panel.h"
 #include <chrono>
 #include <format>
 #include <sstream>

@@ -3,9 +3,9 @@
 #include "engine/core/math.h"
 #include "engine/scene/scene.h"
 #include "engine/ui/editor_camera.h"
-#include "editor/selection_context.h"
-#include "editor/command_history.h"
-#include "editor/debug_draw_pass.h"
+#include "editor/core/selection_context.h"
+#include "editor/core/command_history.h"
+#include "editor/tools/debug_draw_pass.h"
 #include <vulkan/vulkan.h>
 #include <imgui.h>
 #include <imgui_internal.h>

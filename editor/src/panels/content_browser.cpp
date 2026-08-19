@@ -1,5 +1,5 @@
-#include "editor/content_browser.h"
-#include "editor/prefab_manager.h"
+#include "editor/panels/content_browser.h"
+#include "editor/assets/prefab_manager.h"
 #include "engine/vfs/vfs.h"
 #include "engine/assets/asset_manager.h"
 #include "engine/project/project.h"

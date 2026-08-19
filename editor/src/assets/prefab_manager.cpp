@@ -1,5 +1,5 @@
-#include "editor/prefab_manager.h"
-#include "editor/command_history.h"
+#include "editor/assets/prefab_manager.h"
+#include "editor/core/command_history.h"
 #include "engine/vfs/vfs.h"
 #include "engine/scene/map_serializer.h"
 #include "engine/core/log.h"

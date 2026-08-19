@@ -1,4 +1,4 @@
-#include "editor/profiler_panel.h"
+#include "editor/panels/profiler_panel.h"
 #include "engine/rhi/rhi_context.h"
 #include "engine/rhi/rhi_bindless.h"
 #include "engine/jobs/job_system.h"

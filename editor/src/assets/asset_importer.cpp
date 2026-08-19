@@ -1,4 +1,4 @@
-#include "editor/asset_importer.h"
+#include "editor/assets/asset_importer.h"
 #include "engine/vfs/vfs.h"
 #include "engine/assets/asset_manager.h"
 #include "engine/core/platform.h"

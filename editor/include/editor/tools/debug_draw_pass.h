@@ -3,7 +3,7 @@
 #include "engine/scene/scene.h"
 #include "engine/core/math.h"
 #include "engine/ui/editor_camera.h"
-#include "editor/selection_context.h"
+#include "editor/core/selection_context.h"
 #include <imgui.h>
 
 namespace editor {

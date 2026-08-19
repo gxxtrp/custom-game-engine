@@ -1,4 +1,4 @@
-#include "editor/editor_app.h"
+#include "editor/core/editor_app.h"
 #include "engine/core/log.h"
 #include "engine/core/memory.h"
 #include <string_view>

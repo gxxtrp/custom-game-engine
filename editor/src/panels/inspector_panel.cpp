@@ -1,4 +1,4 @@
-#include "editor/inspector_panel.h"
+#include "editor/panels/inspector_panel.h"
 #include "engine/scene/components.h"
 #include "engine/physics/physics_components.h"
 #include "engine/audio/audio_components.h"

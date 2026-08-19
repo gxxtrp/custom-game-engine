@@ -1,9 +1,9 @@
 #pragma once
 
 #include "engine/scene/scene.h"
-#include "editor/selection_context.h"
-#include "editor/command_history.h"
-#include "editor/asset_importer.h"
+#include "editor/core/selection_context.h"
+#include "editor/core/command_history.h"
+#include "editor/assets/asset_importer.h"
 #include <imgui.h>
 #include <string>
 #include <string_view>
