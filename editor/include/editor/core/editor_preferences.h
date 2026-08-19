@@ -38,6 +38,7 @@ struct EditorPreferences {
     bool load_from_file(const std::string& path = ".engine/editor_preferences.toml");
     bool save_to_file(const std::string& path = ".engine/editor_preferences.toml") const;
     void add_recent_project(const std::string& name, const std::string& path);
+    void remove_recent_project(const std::string& path);
 };
 
 } // namespace editor

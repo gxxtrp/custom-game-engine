@@ -135,7 +135,12 @@ bool GameExporter::export_game(const PackagingSettings& settings, std::string& o
     std::vector<std::pair<std::string, std::string>> pak_files;
     auto& proj_mgr = engine::project::ProjectManager::instance();
     std::string proj_root = proj_mgr.get_project_root();
-    if (proj_root.empty()) proj_root = "sandbox_project";
+    if (proj_root.empty()) {
+        LOG_ERROR("Exporter", "Cannot package project: No active project is currently open!");
+        m_status_message = "Packaging Failed: No active project open.";
+        m_is_exporting = false;
+        return false;
+    }
 
     std::vector<std::string> scan_dirs = {
         proj_root + "/assets",

@@ -13,6 +13,7 @@ install/
 dist/
 target/
 cmake-build-*/
+.intermediate/
 
 # CMake Generated Files & Caches
 CMakeCache.txt
@@ -115,7 +116,6 @@ gmon.out
 *.dmp
 *.core
 *.mdmp
-sandbox_phase0.log
 
 # ------------------------------------------------------------------------------
 # IDEs & Editor Configurations

@@ -171,4 +171,15 @@ void EditorPreferences::add_recent_project(const std::string& name, const std::s
     }
 }
 
+void EditorPreferences::remove_recent_project(const std::string& path) {
+    recent_projects.erase(
+        std::remove_if(recent_projects.begin(), recent_projects.end(),
+            [&](const RecentProjectEntry& e) { return e.path == path; }),
+        recent_projects.end()
+    );
+    if (last_project_path == path) {
+        last_project_path = recent_projects.empty() ? "" : recent_projects.front().path;
+    }
+}
+
 } // namespace editor

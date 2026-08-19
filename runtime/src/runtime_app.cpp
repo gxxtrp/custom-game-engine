@@ -56,18 +56,32 @@ bool RuntimeApp::init(const RuntimeAppDesc& desc) {
     if (project_dir.empty()) {
         if (std::filesystem::exists("project.toml")) {
             project_dir = ".";
-        } else if (std::filesystem::exists("sandbox_project/project.toml")) {
-            project_dir = "sandbox_project";
         }
     }
 
-    if (!project_dir.empty()) {
-        std::filesystem::path p(project_dir);
-        if (std::filesystem::exists(p / "project.toml")) {
-            engine::project::ProjectManager::instance().load_project((p / "project.toml").string());
-        } else if (std::filesystem::exists(p) && p.extension() == ".toml") {
-            engine::project::ProjectManager::instance().load_project(p.string());
+    if (project_dir.empty() || (!std::filesystem::exists(project_dir) && !std::filesystem::exists(std::filesystem::path(project_dir) / "project.toml"))) {
+        LOG_ERROR("Runtime", "===============================================================================");
+        LOG_ERROR("Runtime", "No game project found to run!");
+        LOG_ERROR("Runtime", "Usage: runtime.exe --project <project_directory>");
+        LOG_ERROR("Runtime", "Or execute runtime.exe from within a packaged game folder containing project.toml.");
+        LOG_ERROR("Runtime", "===============================================================================");
+        return false;
+    }
+
+    std::filesystem::path p(project_dir);
+    if (std::filesystem::exists(p / "project.toml")) {
+        if (!engine::project::ProjectManager::instance().load_project((p / "project.toml").string())) {
+            LOG_ERROR("Runtime", "Failed to load project manifest: {}/project.toml", project_dir);
+            return false;
         }
+    } else if (std::filesystem::exists(p) && p.extension() == ".toml") {
+        if (!engine::project::ProjectManager::instance().load_project(p.string())) {
+            LOG_ERROR("Runtime", "Failed to load project manifest: {}", p.string());
+            return false;
+        }
+    } else {
+        LOG_ERROR("Runtime", "Specified path is not a valid project directory or project.toml: {}", project_dir);
+        return false;
     }
 
     const auto& proj = engine::project::ProjectManager::instance().get_active_project();
@@ -134,21 +148,7 @@ bool RuntimeApp::init(const RuntimeAppDesc& desc) {
         engine::scene::MapSerializer::load_map(proj.default_map, m_scene);
         LOG_INFO("Runtime", "Loaded startup map: {}", proj.default_map);
     } else {
-        LOG_WARN("Runtime", "No default map found, initializing minimal scene");
-        auto ground = m_scene.create_entity("GroundPlane");
-        ground.set<engine::scene::TransformComponent>(engine::scene::TransformComponent{ 
-            .position = engine::core::Vec3(0.0f, -0.05f, 0.0f),
-            .scale = engine::core::Vec3(30.0f, 0.1f, 30.0f) 
-        });
-        ground.set<engine::scene::MeshRendererComponent>(engine::scene::MeshRendererComponent{ .is_visible = true });
-
-        auto sun = m_scene.create_entity("SunLight");
-        sun.set<engine::scene::TransformComponent>(engine::scene::TransformComponent{ .position = engine::core::Vec3(15.0f, 30.0f, -15.0f) });
-        sun.set<engine::scene::DirectionalLightComponent>(engine::scene::DirectionalLightComponent{ .color = engine::core::Vec3(1.0f, 0.98f, 0.92f), .intensity = 1.5f });
-
-        auto cam = m_scene.create_entity("MainCamera");
-        cam.set<engine::scene::TransformComponent>(engine::scene::TransformComponent{ .position = engine::core::Vec3(0.0f, 2.0f, -6.0f) });
-        cam.set<engine::scene::CameraComponent>(engine::scene::CameraComponent{ .fov_deg = 60.0f, .is_primary = true });
+        LOG_WARN("Runtime", "Startup map '{}' was not found in project. Initializing clean empty scene.", proj.default_map);
     }
 
     m_initialized = true;

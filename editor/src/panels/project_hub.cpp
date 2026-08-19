@@ -8,6 +8,62 @@
 #include <chrono>
 #include <ctime>
 #include <format>
+#include <vector>
+
+#if defined(_WIN32) || defined(WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <shobjidl.h>
+
+static std::string platform_browse_folder(const std::string& title = "Select Project Folder") {
+    std::string result = "";
+    HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+    bool co_initialized = SUCCEEDED(hr);
+
+    IFileOpenDialog* pFileOpen = nullptr;
+    hr = CoCreateInstance(CLSID_FileOpenDialog, NULL, CLSCTX_ALL, IID_IFileOpenDialog, reinterpret_cast<void**>(&pFileOpen));
+    if (SUCCEEDED(hr)) {
+        DWORD dwOptions;
+        if (SUCCEEDED(pFileOpen->GetOptions(&dwOptions))) {
+            pFileOpen->SetOptions(dwOptions | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST);
+        }
+
+        std::wstring wtitle(title.begin(), title.end());
+        pFileOpen->SetTitle(wtitle.c_str());
+
+        if (SUCCEEDED(pFileOpen->Show(NULL))) {
+            IShellItem* pItem = nullptr;
+            if (SUCCEEDED(pFileOpen->GetResult(&pItem))) {
+                PWSTR pszFilePath = nullptr;
+                if (SUCCEEDED(pItem->GetDisplayName(SIGDN_FILESYSPATH, &pszFilePath))) {
+                    int size_needed = WideCharToMultiByte(CP_UTF8, 0, pszFilePath, -1, NULL, 0, NULL, NULL);
+                    if (size_needed > 0) {
+                        result.resize(size_needed - 1);
+                        WideCharToMultiByte(CP_UTF8, 0, pszFilePath, -1, &result[0], size_needed, NULL, NULL);
+                    }
+                    CoTaskMemFree(pszFilePath);
+                }
+                pItem->Release();
+            }
+        }
+        pFileOpen->Release();
+    }
+
+    if (co_initialized) {
+        CoUninitialize();
+    }
+    return result;
+}
+#else
+static std::string platform_browse_folder(const std::string& = "Select Project Folder") {
+    return "";
+}
+#endif
 
 namespace editor {
 
@@ -57,7 +113,7 @@ bool ProjectHub::create_project_from_template(const std::string& directory,
 
         if (tmpl == ProjectTemplate::Blank3D) {
             map_file << "[map]\n"
-                     << "name = 'Blank 3D Level'\n"
+                     << "name = '" << name << " Blank Level'\n"
                      << "version = '1.0.0'\n\n"
                      << "[[entities]]\n"
                      << "name = 'SunLight'\n"
@@ -100,9 +156,9 @@ bool ProjectHub::create_project_from_template(const std::string& directory,
                      << "rotation = [0.0, 0.0, 0.0, 1.0]\n"
                      << "scale = [30.0, 0.1, 30.0]\n";
         } else {
-            // Physics Sandbox Template
+            // Physics Sandbox
             map_file << "[map]\n"
-                     << "name = 'Physics Sandbox Level'\n"
+                     << "name = '" << name << " Physics Level'\n"
                      << "version = '1.0.0'\n\n"
                      << "[[entities]]\n"
                      << "name = 'SunLight'\n"
@@ -189,26 +245,19 @@ bool ProjectHub::create_project_from_template(const std::string& directory,
         }
         map_file.close();
 
-        // 3. Write sample player controller script
+        // 3. Write default Lua script
         std::ofstream script_file(root / "scripts" / "player_controller.lua");
         if (script_file.is_open()) {
-            script_file << "-- Player Controller Script\n"
+            script_file << "-- " << name << " Starter Player Controller\n"
                         << "PlayerController = {}\n"
                         << "PlayerController.__index = PlayerController\n\n"
-                        << "function PlayerController.new()\n"
-                        << "    local self = setmetatable({}, PlayerController)\n"
-                        << "    self.move_speed = 8.0\n"
-                        << "    self.jump_force = 12.0\n"
-                        << "    return self\n"
+                        << "function PlayerController:on_create(entity)\n"
+                        << "    Log.info(\"Started PlayerController on \" .. entity:get_name())\n"
                         << "end\n\n"
-                        << "function PlayerController:on_create()\n"
-                        << "    print('[Lua] PlayerController initialized for ' .. tostring(self))\n"
-                        << "end\n\n"
-                        << "function PlayerController:on_update(dt)\n"
-                        << "    -- Script update logic\n"
-                        << "end\n\n"
-                        << "function PlayerController:on_destroy()\n"
-                        << "    print('[Lua] PlayerController destroyed')\n"
+                        << "function PlayerController:on_update(entity, dt)\n"
+                        << "    if Input.is_key_down(\"W\") then\n"
+                        << "        entity:translate(0.0, 0.0, 5.0 * dt)\n"
+                        << "    end\n"
                         << "end\n";
             script_file.close();
         }
@@ -216,7 +265,7 @@ bool ProjectHub::create_project_from_template(const std::string& directory,
         LOG_INFO("ProjectHub", "Successfully created new project '{}' at '{}'", name, directory);
         return true;
     } catch (const std::exception& e) {
-        LOG_ERROR("ProjectHub", "Failed to create project: {}", e.what());
+        LOG_ERROR("ProjectHub", "Exception creating project: {}", e.what());
         return false;
     }
 }
@@ -225,67 +274,85 @@ void ProjectHub::render(EditorPreferences& preferences, bool* is_open,
                        std::function<void(const std::string& project_path)> on_project_selected) {
     if (is_open && !*is_open) return;
 
-    ImGui::SetNextWindowSize(ImVec2(720, 480), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f), 
-                            ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(ImVec2(800, 540), ImGuiCond_FirstUseEver);
+    ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse;
 
-    ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoDocking;
-    if (ImGui::Begin("Project Hub", is_open, flags)) {
-        ImGui::TextColored(ImVec4(0.35f, 0.75f, 1.0f, 1.0f), "Modern Game Engine Visual Project Hub");
-        ImGui::TextDisabled("Create new projects from templates or resume work on recent projects.");
+    if (ImGui::Begin("Project Hub & Launcher", is_open, flags)) {
+        ImGui::TextColored(ImVec4(0.35f, 0.85f, 1.0f, 1.0f), "Modern Game Engine: Projects & Templates");
+        ImGui::TextDisabled("Create, manage, and open your engine game projects.");
         ImGui::Separator();
         ImGui::Spacing();
 
         if (!m_error_message.empty()) {
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.35f, 0.35f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.4f, 0.4f, 1.0f));
             ImGui::Text("Error: %s", m_error_message.c_str());
             ImGui::PopStyleColor();
             ImGui::Spacing();
         }
 
-        if (ImGui::BeginTabBar("ProjectHubTabs", ImGuiTabBarFlags_None)) {
+        if (ImGui::BeginTabBar("ProjectHubTabs")) {
             // ================================================================
             // Tab 1: Recent Projects
             // ================================================================
             if (ImGui::BeginTabItem("Recent Projects")) {
                 ImGui::Spacing();
-                if (preferences.recent_projects.empty()) {
+                const auto& recents = preferences.recent_projects;
+
+                if (recents.empty()) {
                     ImGui::TextDisabled("No recent projects found.");
-                    ImGui::TextDisabled("Use the 'New Project' tab to create your first game project!");
+                    ImGui::Spacing();
+                    ImGui::Text("Switch to the 'New Project' tab to create your first game project!");
                 } else {
-                    ImGui::BeginChild("RecentProjectsList", ImVec2(0, -40), true);
-                    for (size_t i = 0; i < preferences.recent_projects.size(); ++i) {
-                        const auto& proj = preferences.recent_projects[i];
-                        ImGui::PushID(static_cast<int>(i));
+                    if (ImGui::BeginTable("RecentProjectsTable", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_ScrollY, ImVec2(0, 360))) {
+                        ImGui::TableSetupColumn("Project Name", ImGuiTableColumnFlags_WidthFixed, 180.0f);
+                        ImGui::TableSetupColumn("Path", ImGuiTableColumnFlags_WidthStretch);
+                        ImGui::TableSetupColumn("Last Opened", ImGuiTableColumnFlags_WidthFixed, 140.0f);
+                        ImGui::TableSetupColumn("Actions", ImGuiTableColumnFlags_WidthFixed, 120.0f);
+                        ImGui::TableHeadersRow();
 
-                        ImGui::BeginGroup();
-                        ImGui::TextColored(ImVec4(0.95f, 0.95f, 0.98f, 1.0f), "%s", proj.name.c_str());
-                        ImGui::TextDisabled("%s", proj.path.c_str());
-                        ImGui::EndGroup();
+                        for (size_t i = 0; i < recents.size(); ++i) {
+                            const auto& proj = recents[i];
+                            ImGui::TableNextRow();
 
-                        ImGui::SameLine(ImGui::GetContentRegionAvail().x - 140.0f);
-                        if (ImGui::Button("Open Project", ImVec2(100, 26))) {
-                            m_error_message = "";
-                            if (std::filesystem::exists(proj.path)) {
+                            // Col 1: Name
+                            ImGui::TableSetColumnIndex(0);
+                            ImGui::TextColored(ImVec4(0.9f, 0.95f, 1.0f, 1.0f), "%s", proj.name.c_str());
+
+                            // Col 2: Path
+                            ImGui::TableSetColumnIndex(1);
+                            ImGui::TextDisabled("%s", proj.path.c_str());
+
+                            // Col 3: Date
+                            ImGui::TableSetColumnIndex(2);
+                            std::time_t t = static_cast<std::time_t>(proj.last_opened_timestamp);
+                            char time_buf[64];
+                            std::tm tm_buf{};
+#if defined(_WIN32)
+                            localtime_s(&tm_buf, &t);
+#else
+                            localtime_r(&t, &tm_buf);
+#endif
+                            std::strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M", &tm_buf);
+                            ImGui::TextDisabled("%s", time_buf);
+
+                            // Col 4: Open / Remove
+                            ImGui::TableSetColumnIndex(3);
+                            ImGui::PushID(static_cast<int>(i));
+                            if (ImGui::Button("Open", ImVec2(50, 0))) {
                                 if (on_project_selected) on_project_selected(proj.path);
                                 if (is_open) *is_open = false;
-                            } else {
-                                m_error_message = std::format("Project path does not exist: {}", proj.path);
                             }
-                        }
-
-                        ImGui::SameLine();
-                        if (ImGui::Button("X", ImVec2(26, 26))) {
-                            preferences.recent_projects.erase(preferences.recent_projects.begin() + i);
-                            preferences.save_to_file(".engine/editor_preferences.toml");
+                            ImGui::SameLine();
+                            if (ImGui::Button("Remove", ImVec2(55, 0))) {
+                                preferences.remove_recent_project(proj.path);
+                                preferences.save_to_file(".engine/editor_preferences.toml");
+                                ImGui::PopID();
+                                break;
+                            }
                             ImGui::PopID();
-                            break;
                         }
-
-                        ImGui::Separator();
-                        ImGui::PopID();
+                        ImGui::EndTable();
                     }
-                    ImGui::EndChild();
                 }
                 ImGui::EndTabItem();
             }
@@ -295,8 +362,7 @@ void ProjectHub::render(EditorPreferences& preferences, bool* is_open,
             // ================================================================
             if (ImGui::BeginTabItem("New Project")) {
                 ImGui::Spacing();
-
-                ImGui::Text("1. Select Template:");
+                ImGui::Text("1. Choose a Starter Template:");
                 ImGui::Spacing();
 
                 float card_width = 320.0f;
@@ -347,7 +413,20 @@ void ProjectHub::render(EditorPreferences& preferences, bool* is_open,
                     snprintf(m_new_project_dir, sizeof(m_new_project_dir), "projects/%s", m_new_project_name);
                 }
 
-                ImGui::InputText("Location", m_new_project_dir, sizeof(m_new_project_dir));
+                ImGui::Text("Location:");
+                ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 110.0f);
+                ImGui::InputText("##NewProjectLocation", m_new_project_dir, sizeof(m_new_project_dir));
+                ImGui::SameLine();
+                if (ImGui::Button("Browse...##NewProj", ImVec2(100, 0))) {
+                    std::string chosen = platform_browse_folder("Select Parent Directory for New Project");
+                    if (!chosen.empty()) {
+                        std::filesystem::path p(chosen);
+                        if (p.filename().string() != m_new_project_name) {
+                            p /= m_new_project_name;
+                        }
+                        snprintf(m_new_project_dir, sizeof(m_new_project_dir), "%s", p.generic_string().c_str());
+                    }
+                }
 
                 ImGui::Spacing();
                 ImGui::Separator();
@@ -360,7 +439,7 @@ void ProjectHub::render(EditorPreferences& preferences, bool* is_open,
 
                     if (dir_str.empty() || name_str.empty()) {
                         m_error_message = "Project name and location cannot be empty.";
-                    } else if (std::filesystem::exists(dir_str / std::filesystem::path("project.toml"))) {
+                    } else if (std::filesystem::exists(std::filesystem::path(dir_str) / "project.toml")) {
                         m_error_message = std::format("A project already exists at '{}'.", dir_str);
                     } else {
                         if (create_project_from_template(dir_str, name_str, m_selected_template)) {
@@ -381,23 +460,74 @@ void ProjectHub::render(EditorPreferences& preferences, bool* is_open,
             // ================================================================
             if (ImGui::BeginTabItem("Open Project")) {
                 ImGui::Spacing();
-                ImGui::Text("Enter the directory path of an existing project:");
-                ImGui::InputTextWithHint("##OpenProjectPath", "e.g. sandbox_project or projects/MyGame", 
+                ImGui::Text("Select or browse to the folder of an existing project:");
+                ImGui::Spacing();
+
+                ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 140.0f);
+                ImGui::InputTextWithHint("##OpenProjectPath", "Select or type project folder path...", 
                                          m_open_project_path, sizeof(m_open_project_path));
+                ImGui::SameLine();
+                if (ImGui::Button("Browse Folder...##OpenProj", ImVec2(130, 0))) {
+                    std::string chosen = platform_browse_folder("Select Project Folder to Open");
+                    if (!chosen.empty()) {
+                        snprintf(m_open_project_path, sizeof(m_open_project_path), "%s", chosen.c_str());
+                    }
+                }
 
                 ImGui::Spacing();
-                if (ImGui::Button("Open", ImVec2(120, 30))) {
+                if (ImGui::Button("Open Selected Project", ImVec2(170, 32))) {
                     m_error_message = "";
                     std::string path_str = m_open_project_path;
                     if (path_str.empty()) {
-                        m_error_message = "Please enter a valid directory path.";
+                        m_error_message = "Please select or enter a valid directory path.";
                     } else if (!std::filesystem::exists(path_str)) {
                         m_error_message = std::format("Path does not exist: {}", path_str);
+                    } else if (!std::filesystem::exists(std::filesystem::path(path_str) / "project.toml")) {
+                        m_error_message = std::format("Selected folder does not contain 'project.toml': {}", path_str);
                     } else {
                         if (on_project_selected) on_project_selected(path_str);
                         if (is_open) *is_open = false;
                     }
                 }
+
+                ImGui::Spacing();
+                ImGui::Separator();
+                ImGui::Spacing();
+
+                ImGui::TextDisabled("Discovered Local Projects:");
+                if (ImGui::BeginChild("DiscoveredProjects", ImVec2(0, 160), true)) {
+                    std::vector<std::string> search_dirs = { "projects", "." };
+                    int proj_count = 0;
+                    for (const auto& sdir : search_dirs) {
+                        if (!std::filesystem::exists(sdir)) continue;
+                        for (const auto& entry : std::filesystem::directory_iterator(sdir)) {
+                            if (entry.is_directory()) {
+                                std::filesystem::path manifest = entry.path() / "project.toml";
+                                if (std::filesystem::exists(manifest)) {
+                                    proj_count++;
+                                    std::string p_name = entry.path().filename().generic_string();
+                                    std::string p_path = entry.path().generic_string();
+
+                                    ImGui::PushID(proj_count);
+                                    if (ImGui::Button("Open", ImVec2(60, 24))) {
+                                        if (on_project_selected) on_project_selected(p_path);
+                                        if (is_open) *is_open = false;
+                                    }
+                                    ImGui::SameLine();
+                                    ImGui::TextColored(ImVec4(0.35f, 0.85f, 1.0f, 1.0f), "%s", p_name.c_str());
+                                    ImGui::SameLine();
+                                    ImGui::TextDisabled("(%s)", p_path.c_str());
+                                    ImGui::PopID();
+                                }
+                            }
+                        }
+                    }
+                    if (proj_count == 0) {
+                        ImGui::TextDisabled("No local projects detected in ./projects");
+                    }
+                }
+                ImGui::EndChild();
+
                 ImGui::EndTabItem();
             }
 

@@ -12,7 +12,7 @@ namespace fs = std::filesystem;
 int main(int argc, char* argv[]) {
     Logger::instance().add_sink(std::make_shared<ConsoleSink>());
 
-    std::string input_dir = "sandbox_project/assets";
+    std::string input_dir = "";
     std::string output_pak = "game_data.pak";
 
     for (int i = 1; i < argc; ++i) {
@@ -24,22 +24,10 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    LOG_INFO("PakBuilder", "==================================================");
-    LOG_INFO("PakBuilder", "    Automated PAK Archive & Asset Cooker Tool     ");
-    LOG_INFO("PakBuilder", "==================================================");
-    LOG_INFO("PakBuilder", "Input Directory: {}", input_dir);
-    LOG_INFO("PakBuilder", "Output Archive : {}", output_pak);
-
-    if (!fs::exists(input_dir)) {
-        LOG_WARN("PakBuilder", "Input directory does not exist: {}. Creating dummy test files...", input_dir);
-        fs::create_directories(input_dir);
-        std::ofstream dummy1(input_dir + "/test_shader.spv", std::ios::binary);
-        dummy1 << "SPIRV_DUMMY_BYTECODE_TEST_DATA";
-        dummy1.close();
-
-        std::ofstream dummy2(input_dir + "/level_manifest.toml");
-        dummy2 << "title = \"PakCookedMap\"\nversion = 1\n";
-        dummy2.close();
+    if (input_dir.empty() || !fs::exists(input_dir)) {
+        LOG_ERROR("PakBuilder", "Usage: pak_builder.exe --input <directory_to_pack> [--output <game_data.pak>]");
+        LOG_ERROR("PakBuilder", "Specified input directory does not exist: '{}'", input_dir);
+        return 1;
     }
 
     std::vector<std::pair<std::string, std::string>> files;

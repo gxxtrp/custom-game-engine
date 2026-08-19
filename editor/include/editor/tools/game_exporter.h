@@ -13,9 +13,9 @@ enum class PackagingBuildConfig {
 };
 
 struct PackagingSettings {
-    std::string project_name{"SandboxGame"};
-    std::string startup_map{"maps/sandbox.map"};
-    std::string output_directory{"dist/SandboxGame"};
+    std::string project_name{""};
+    std::string startup_map{""};
+    std::string output_directory{""};
     PackagingBuildConfig configuration{PackagingBuildConfig::Release};
     bool prune_unused_assets{false};
     bool include_debug_symbols{false};

@@ -39,6 +39,7 @@ int main(int argc, char* argv[]) {
         .height = height,
         .vsync = vsync,
         .enable_validation = true,
+        .project_path = project_dir,
         .project_directory = project_dir,
         .project_name = project_name
     };

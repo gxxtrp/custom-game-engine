@@ -35,6 +35,7 @@ struct EditorAppDesc {
     uint32_t height{900};
     bool vsync{true};
     bool enable_validation{true};
+    std::string project_path{""};
     std::string project_directory{""};
     std::string project_name{""};
 };
@@ -139,7 +140,7 @@ private:
     bool m_initialized{false};
     bool m_running{false};
     bool m_reset_layout{false};
-    std::string m_current_scene_path{"/maps/sandbox.map"};
+    std::string m_current_scene_path{""};
 
     // Panel visibility toggles
     bool m_show_viewport{true};

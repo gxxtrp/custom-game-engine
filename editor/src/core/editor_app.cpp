@@ -274,11 +274,15 @@ bool EditorApp::init(const EditorAppDesc& desc) {
     // Initialize initial offscreen viewport render target
     create_or_resize_viewport_framebuffer(1280, 720);
 
-    // Load Project Startup Scene if present, or open Project Hub modal
-    if (!project_dir.empty() && std::filesystem::exists(project_dir)) {
-        open_project(project_dir);
+    // Load Project Startup Scene ONLY if explicitly passed via command line (--project <path>)
+    // When opened directly, start with a clean empty state and show the Project Hub
+    if (!m_desc.project_path.empty() && std::filesystem::exists(m_desc.project_path)) {
+        open_project(m_desc.project_path);
     } else {
-        new_scene();
+        m_active_scene.clear();
+        m_selection_context.clear();
+        m_command_history.clear();
+        m_current_scene_path = "";
         m_show_project_hub = true;
     }
 
@@ -491,15 +495,18 @@ void EditorApp::open_scene(const std::string& path) {
         m_current_scene_path = path;
         LOG_INFO("Editor", "Opened and deserialized scene: {}", path);
     } else {
-        LOG_WARN("Editor", "Could not deserialize scene '{}', initializing clean scene", path);
-        new_scene();
-        m_current_scene_path = path;
+        LOG_WARN("Editor", "Could not open scene from path '{}'", path);
     }
 }
 
 void EditorApp::save_scene() {
-    if (m_current_scene_path.empty() || m_current_scene_path == "/maps/untitled.map") {
-        save_scene_as("/maps/main.map");
+    if (m_current_scene_path.empty() || m_current_scene_path == "maps/untitled.map") {
+        if (engine::project::ProjectManager::instance().is_project_loaded()) {
+            const auto& proj = engine::project::ProjectManager::instance().get_active_project();
+            save_scene_as(proj.default_map.empty() ? "maps/default.map" : proj.default_map);
+        } else {
+            save_scene_as("maps/untitled.map");
+        }
         return;
     }
     if (engine::scene::MapSerializer::save_map(m_active_scene, m_current_scene_path)) {
@@ -640,23 +647,22 @@ void EditorApp::render_main_menu_bar() {
             if (ImGui::MenuItem("New Scene", "Ctrl+N")) {
                 new_scene();
             }
-            if (ImGui::MenuItem("Open Scene...", "Ctrl+O")) {
-                open_scene("/maps/sandbox.map");
-            }
-            if (ImGui::MenuItem("Save Scene", "Ctrl+S")) {
-                save_scene();
-            }
             if (ImGui::MenuItem("Save Scene As...", "Ctrl+Shift+S")) {
-                save_scene_as("/maps/sandbox_copy.map");
+                if (engine::project::ProjectManager::instance().is_project_loaded()) {
+                    const auto& proj = engine::project::ProjectManager::instance().get_active_project();
+                    save_scene_as(proj.default_map.empty() ? "maps/default.map" : proj.default_map);
+                } else {
+                    save_scene_as("maps/untitled.map");
+                }
             }
             ImGui::Separator();
             if (ImGui::MenuItem("Project Hub...", "Ctrl+Shift+P")) {
                 m_show_project_hub = true;
             }
-            if (ImGui::MenuItem("Project Settings...")) {
+            if (ImGui::MenuItem("Project Settings...", nullptr, false, engine::project::ProjectManager::instance().is_project_loaded())) {
                 m_show_project_settings = true;
             }
-            if (ImGui::MenuItem("Package Project...", "Ctrl+Shift+B")) {
+            if (ImGui::MenuItem("Package Project...", "Ctrl+Shift+B", false, engine::project::ProjectManager::instance().is_project_loaded())) {
                 m_show_packaging_dialog = true;
             }
             ImGui::Separator();
