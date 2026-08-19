@@ -17,6 +17,7 @@ add_executable(editor
     src/panels/content_browser.cpp
     src/panels/console_panel.cpp
     src/panels/profiler_panel.cpp
+    src/panels/project_hub.cpp
 
     # Assets & Templates
     src/assets/asset_importer.cpp

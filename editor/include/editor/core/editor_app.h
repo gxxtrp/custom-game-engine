@@ -14,6 +14,7 @@
 #include "editor/panels/profiler_panel.h"
 #include "editor/core/autosave_manager.h"
 #include "editor/core/editor_preferences.h"
+#include "editor/panels/project_hub.h"
 #include "editor/tools/game_exporter.h"
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -91,10 +92,12 @@ private:
     void render_environment_panel();
     void render_project_settings_dialog();
     void render_preferences_dialog();
+    void render_project_hub_dialog();
     void render_packaging_dialog();
     void render_about_dialog();
 
     // Scene & Project helpers
+    bool open_project(const std::string& project_dir);
     void new_scene();
     void open_scene(const std::string& path);
     void save_scene();
@@ -148,6 +151,7 @@ private:
     bool m_show_environment{true};
     bool m_show_project_settings{false};
     bool m_show_preferences{false};
+    bool m_show_project_hub{false};
     bool m_show_packaging_dialog{false};
     bool m_show_about_dialog{false};
     bool m_show_imgui_demo{false};
@@ -173,6 +177,7 @@ private:
     AutosaveManager m_autosave_manager;
     GameExporter m_game_exporter;
     EditorPreferences m_preferences;
+    ProjectHub m_project_hub;
 
     // Environment Panel State
     float m_sun_intensity{1.5f};

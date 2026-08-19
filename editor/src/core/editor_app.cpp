@@ -122,32 +122,19 @@ bool EditorApp::init(const EditorAppDesc& desc) {
     if (!engine::audio::AudioEngine::instance().init()) return false;
     if (!engine::scripting::ScriptEngine::instance().init()) return false;
 
-    // 3. Editor Preferences & Project Manager
+    // 3. Editor Preferences
     m_preferences.load_from_file(".engine/editor_preferences.toml");
     m_camera_speed = m_preferences.camera_speed;
     m_use_snap = m_preferences.snap_enabled;
 
     std::string project_dir = m_desc.project_directory;
-    std::string project_name = m_desc.project_name;
     if (project_dir.empty() && !m_preferences.last_project_path.empty()) {
         project_dir = m_preferences.last_project_path;
     }
 
-    if (!project_dir.empty()) {
-        std::filesystem::path p(project_dir);
-        if (std::filesystem::exists(p / "project.toml")) {
-            engine::project::ProjectManager::instance().load_project((p / "project.toml").string());
-        } else if (std::filesystem::exists(p) && p.extension() == ".toml") {
-            engine::project::ProjectManager::instance().load_project(p.string());
-        } else {
-            engine::project::ProjectManager::instance().create_project(project_dir, project_name);
-        }
-        m_preferences.add_recent_project(engine::project::ProjectManager::instance().get_active_project().name, project_dir);
-    }
-
     // 4. Window & Vulkan 1.3 Context
     engine::core::WindowDesc win_desc{
-        .title = m_desc.title + " - " + m_desc.project_name,
+        .title = m_desc.title + (!m_desc.project_name.empty() ? " - " + m_desc.project_name : ""),
         .width = m_desc.width,
         .height = m_desc.height,
         .resizable = true,
@@ -287,12 +274,12 @@ bool EditorApp::init(const EditorAppDesc& desc) {
     // Initialize initial offscreen viewport render target
     create_or_resize_viewport_framebuffer(1280, 720);
 
-    // Load Project Startup Scene if present, or start clean scene
-    auto& proj = engine::project::ProjectManager::instance().get_active_project();
-    if (!proj.default_map.empty() && (engine::vfs::VFS::instance().file_exists(proj.default_map) || std::filesystem::exists(proj.default_map))) {
-        open_scene(proj.default_map);
+    // Load Project Startup Scene if present, or open Project Hub modal
+    if (!project_dir.empty() && std::filesystem::exists(project_dir)) {
+        open_project(project_dir);
     } else {
         new_scene();
+        m_show_project_hub = true;
     }
 
     m_initialized = true;
@@ -430,6 +417,51 @@ void EditorApp::create_primitive_entity(std::string_view type) {
         ));
         LOG_INFO("Editor", "Created entity '{}' ({})", entity.get_name(), type);
     }
+}
+
+bool EditorApp::open_project(const std::string& project_dir) {
+    if (project_dir.empty()) return false;
+
+    // 1. Close current project
+    engine::project::ProjectManager::instance().close_project();
+
+    // 2. Resolve and load project manifest
+    std::filesystem::path p(project_dir);
+    bool loaded = false;
+    if (std::filesystem::exists(p / "project.toml")) {
+        loaded = engine::project::ProjectManager::instance().load_project((p / "project.toml").string());
+    } else if (std::filesystem::exists(p) && p.extension() == ".toml") {
+        loaded = engine::project::ProjectManager::instance().load_project(p.string());
+    } else {
+        LOG_WARN("Editor", "Could not find project.toml at '{}'", project_dir);
+        return false;
+    }
+
+    if (!loaded) {
+        LOG_ERROR("Editor", "Failed to load project at '{}'", project_dir);
+        return false;
+    }
+
+    const auto& proj = engine::project::ProjectManager::instance().get_active_project();
+    m_desc.project_name = proj.name;
+    m_desc.project_directory = project_dir;
+
+    // 3. Update Preferences
+    m_preferences.add_recent_project(proj.name, project_dir);
+    m_preferences.save_to_file(".engine/editor_preferences.toml");
+
+    // 4. Update Window Title
+    m_window.set_title(m_desc.title + " - " + proj.name);
+
+    // 5. Load Project Startup Map
+    if (!proj.default_map.empty() && (engine::vfs::VFS::instance().file_exists(proj.default_map) || std::filesystem::exists(proj.default_map))) {
+        open_scene(proj.default_map);
+    } else {
+        new_scene();
+    }
+
+    LOG_INFO("Editor", "Successfully opened project '{}' ({})", proj.name, project_dir);
+    return true;
 }
 
 void EditorApp::new_scene() {
@@ -618,6 +650,9 @@ void EditorApp::render_main_menu_bar() {
                 save_scene_as("/maps/sandbox_copy.map");
             }
             ImGui::Separator();
+            if (ImGui::MenuItem("Project Hub...", "Ctrl+Shift+P")) {
+                m_show_project_hub = true;
+            }
             if (ImGui::MenuItem("Project Settings...")) {
                 m_show_project_settings = true;
             }
@@ -1101,6 +1136,12 @@ void EditorApp::render_preferences_dialog() {
     ImGui::End();
 }
 
+void EditorApp::render_project_hub_dialog() {
+    m_project_hub.render(m_preferences, &m_show_project_hub, [this](const std::string& proj_path) {
+        open_project(proj_path);
+    });
+}
+
 void EditorApp::render_packaging_dialog() {
     m_game_exporter.render_dialog(m_active_scene, &m_show_packaging_dialog);
 }
@@ -1229,6 +1270,7 @@ void EditorApp::step() {
     if (m_show_environment) render_environment_panel();
     if (m_show_project_settings) render_project_settings_dialog();
     if (m_show_preferences) render_preferences_dialog();
+    if (m_show_project_hub) render_project_hub_dialog();
     if (m_show_packaging_dialog) render_packaging_dialog();
     if (m_show_about_dialog) render_about_dialog();
     if (m_show_imgui_demo) ImGui::ShowDemoWindow(&m_show_imgui_demo);

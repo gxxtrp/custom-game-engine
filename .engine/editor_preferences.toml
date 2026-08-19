@@ -4,7 +4,7 @@ autosave_interval_seconds = 300.0
 max_autosaves = 5
 
 [general]
-last_project_path = 'sandbox_project'
+last_project_path = 'projects/ActionDemo'
 theme_index = 0
 
 [snapping]
@@ -19,6 +19,11 @@ camera_speed = 5.0
 flycam_sensitivity = 0.30000001192092896
 
 [[recent_projects]]
-last_opened = 1787153312
+last_opened = 1787154483
+name = 'ActionDemo'
+path = 'projects/ActionDemo'
+
+[[recent_projects]]
+last_opened = 1787154438
 name = 'SandboxGame'
 path = 'sandbox_project'

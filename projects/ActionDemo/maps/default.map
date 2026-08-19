@@ -1,0 +1,52 @@
+[map]
+name = "ActionDemo Blank Level"
+version = "1.0.0"
+
+[[entities]]
+name = "SunLight"
+uuid = "11111111-2222-3333-4444-555555555555"
+
+[entities.directional_light]
+cascade_count = 4
+cast_shadows = true
+color = [1.0, 0.98, 0.92]
+intensity = 1.5
+
+[entities.transform]
+position = [15.0, 30.0, -15.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[[entities]]
+name = "MainCamera"
+uuid = "22222222-3333-4444-5555-666666666666"
+
+[entities.camera]
+far_z = 1000.0
+fov_deg = 60.0
+is_orthographic = false
+is_primary = true
+near_z = 0.1
+ortho_size = 10.0
+
+[entities.transform]
+position = [0.0, 2.0, -6.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[[entities]]
+name = "GroundPlane"
+uuid = "33333333-4444-5555-6666-777777777777"
+
+[entities.mesh_renderer]
+cast_shadows = false
+is_visible = true
+material_uuid = "00000000-0000-0000-0000-000000000000"
+mesh_uuid = "00000000-0000-0000-0000-000000000000"
+receive_shadows = true
+submesh_index = 0
+
+[entities.transform]
+position = [0.0, -0.05, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [30.0, 0.1, 30.0]
