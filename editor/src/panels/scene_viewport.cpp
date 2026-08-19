@@ -166,6 +166,8 @@ void SceneViewport::render_gizmo(engine::scene::Scene& scene, SelectionContext& 
 
     engine::core::Mat4 view = m_camera.get_view_matrix();
     engine::core::Mat4 proj = m_camera.get_projection_matrix(m_size.x / m_size.y);
+    // Un-invert Y for ImGuizmo: Vulkan uses Y-down NDC, but ImGuizmo expects standard OpenGL/DirectX Y-up NDC
+    proj.cols[1].y = -proj.cols[1].y;
     engine::core::Mat4 model = transform.get_local_matrix();
 
     float snap_values[3]{ m_snap_translation, m_snap_translation, m_snap_translation };
@@ -225,6 +227,12 @@ void SceneViewport::render_gizmo(engine::scene::Scene& scene, SelectionContext& 
         transform.rotation = new_rot;
         transform.scale = new_scale;
         transform.is_dirty = true;
+
+        primary.set<engine::scene::TransformComponent>(transform);
+        if (primary.has<engine::scene::WorldTransformComponent>()) {
+            primary.set<engine::scene::WorldTransformComponent>(engine::scene::WorldTransformComponent{ .matrix = updated_model });
+        }
+        scene.update_transforms();
     }
 
     // When gizmo drag finishes, record Undo/Redo command

@@ -146,10 +146,15 @@ bool EditorPreferences::save_to_file(const std::string& path) const {
 }
 
 void EditorPreferences::add_recent_project(const std::string& name, const std::string& path) {
-    // Remove if already exists
+    if (path.empty()) return;
+    std::string norm_path = std::filesystem::path(path).lexically_normal().generic_string();
+
+    // Remove if already exists (by normalized path)
     recent_projects.erase(
         std::remove_if(recent_projects.begin(), recent_projects.end(),
-            [&](const RecentProjectEntry& e) { return e.path == path; }),
+            [&](const RecentProjectEntry& e) { 
+                return std::filesystem::path(e.path).lexically_normal().generic_string() == norm_path; 
+            }),
         recent_projects.end()
     );
 
@@ -157,13 +162,13 @@ void EditorPreferences::add_recent_project(const std::string& name, const std::s
     int64_t ts = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
 
     RecentProjectEntry new_entry{
-        .name = name,
-        .path = path,
+        .name = name.empty() ? std::filesystem::path(norm_path).filename().generic_string() : name,
+        .path = norm_path,
         .last_opened_timestamp = ts
     };
 
     recent_projects.insert(recent_projects.begin(), new_entry);
-    last_project_path = path;
+    last_project_path = norm_path;
 
     // Cap to 10 recent projects
     if (recent_projects.size() > 10) {
@@ -172,12 +177,15 @@ void EditorPreferences::add_recent_project(const std::string& name, const std::s
 }
 
 void EditorPreferences::remove_recent_project(const std::string& path) {
+    std::string norm_path = std::filesystem::path(path).lexically_normal().generic_string();
     recent_projects.erase(
         std::remove_if(recent_projects.begin(), recent_projects.end(),
-            [&](const RecentProjectEntry& e) { return e.path == path; }),
+            [&](const RecentProjectEntry& e) { 
+                return std::filesystem::path(e.path).lexically_normal().generic_string() == norm_path; 
+            }),
         recent_projects.end()
     );
-    if (last_project_path == path) {
+    if (last_project_path == norm_path || last_project_path == path) {
         last_project_path = recent_projects.empty() ? "" : recent_projects.front().path;
     }
 }

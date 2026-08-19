@@ -77,6 +77,8 @@ void ViewportPanel::render_gizmo(scene::Scene& scene) {
 
     core::Mat4 view = m_camera.get_view_matrix();
     core::Mat4 proj = m_camera.get_projection_matrix(m_size.x / m_size.y);
+    // Un-invert Y for ImGuizmo: Vulkan uses Y-down NDC, but ImGuizmo expects standard OpenGL/DirectX Y-up NDC
+    proj.cols[1].y = -proj.cols[1].y;
 
     // Matrix to transform
     core::Mat4 model = transform.get_local_matrix();

@@ -26,6 +26,7 @@ public:
     bool get_primary_camera(CameraComponent& out_camera, WorldTransformComponent& out_transform, Entity* out_entity = nullptr);
 
     void update(float dt);
+    void update_transforms();
     void clear();
 
     std::string_view get_name() const { return m_name; }
@@ -39,7 +40,6 @@ public:
 private:
     void register_components();
     void register_systems();
-    void update_transforms();
 
     std::string m_name;
     flecs::world m_world;

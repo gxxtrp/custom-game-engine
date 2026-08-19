@@ -277,16 +277,28 @@ void InspectorPanel::draw_transform_editor(flecs::entity entity) {
 
         if (draw_vec3_control("Position", trans.position, 0.0f, 0.1f)) {
             trans.is_dirty = true;
+            entity.set<engine::scene::TransformComponent>(trans);
+            if (entity.has<engine::scene::WorldTransformComponent>()) {
+                entity.set<engine::scene::WorldTransformComponent>(engine::scene::WorldTransformComponent{ .matrix = trans.get_local_matrix() });
+            }
         }
 
         engine::core::Vec3 euler_deg = quat_to_euler_deg(trans.rotation);
         if (draw_vec3_control("Rotation", euler_deg, 0.0f, 0.5f)) {
             trans.rotation = euler_deg_to_quat(euler_deg);
             trans.is_dirty = true;
+            entity.set<engine::scene::TransformComponent>(trans);
+            if (entity.has<engine::scene::WorldTransformComponent>()) {
+                entity.set<engine::scene::WorldTransformComponent>(engine::scene::WorldTransformComponent{ .matrix = trans.get_local_matrix() });
+            }
         }
 
         if (draw_vec3_control("Scale", trans.scale, 1.0f, 0.05f)) {
             trans.is_dirty = true;
+            entity.set<engine::scene::TransformComponent>(trans);
+            if (entity.has<engine::scene::WorldTransformComponent>()) {
+                entity.set<engine::scene::WorldTransformComponent>(engine::scene::WorldTransformComponent{ .matrix = trans.get_local_matrix() });
+            }
         }
     }
 }

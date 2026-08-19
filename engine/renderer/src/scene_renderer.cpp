@@ -113,6 +113,9 @@ void SceneRenderer::render_scene(rhi::RhiCommandBuffer& cmd,
                                 const rhi::Rect2D& scissor) {
     if (!m_initialized) return;
 
+    // Synchronize scene transforms to ensure world matrices are updated for rendering
+    scene.update_transforms();
+
     m_stats = SceneRenderStats{};
 
     cmd.set_viewport(viewport);

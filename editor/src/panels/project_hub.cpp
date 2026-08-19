@@ -1,6 +1,8 @@
 #include "editor/panels/project_hub.h"
 #include "engine/core/log.h"
+#include "engine/core/platform.h"
 #include "engine/assets/uuid.h"
+#include <toml++/toml.hpp>
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <filesystem>
@@ -314,9 +316,35 @@ void ProjectHub::render(EditorPreferences& preferences, bool* is_open,
                             const auto& proj = recents[i];
                             ImGui::TableNextRow();
 
+                            bool exists = std::filesystem::exists(std::filesystem::path(proj.path) / "project.toml") || 
+                                          (std::filesystem::exists(proj.path) && std::filesystem::path(proj.path).extension() == ".toml");
+                            
+                            std::string display_name = proj.name;
+                            if (exists) {
+                                std::filesystem::path manifest = std::filesystem::exists(std::filesystem::path(proj.path) / "project.toml")
+                                    ? std::filesystem::path(proj.path) / "project.toml"
+                                    : std::filesystem::path(proj.path);
+                                
+                                std::string file_content;
+                                if (engine::core::FileSystem::read_file_string(manifest.string(), file_content)) {
+                                    try {
+                                        auto tbl = toml::parse(file_content);
+                                        if (auto* p = tbl["project"].as_table()) {
+                                            if (auto* n = (*p)["name"].as_string()) {
+                                                display_name = n->get();
+                                            }
+                                        }
+                                    } catch (...) {}
+                                }
+                            }
+
                             // Col 1: Name
                             ImGui::TableSetColumnIndex(0);
-                            ImGui::TextColored(ImVec4(0.9f, 0.95f, 1.0f, 1.0f), "%s", proj.name.c_str());
+                            if (exists) {
+                                ImGui::TextColored(ImVec4(0.9f, 0.95f, 1.0f, 1.0f), "%s", display_name.c_str());
+                            } else {
+                                ImGui::TextColored(ImVec4(0.85f, 0.4f, 0.4f, 1.0f), "%s (Missing)", display_name.c_str());
+                            }
 
                             // Col 2: Path
                             ImGui::TableSetColumnIndex(1);
@@ -339,8 +367,12 @@ void ProjectHub::render(EditorPreferences& preferences, bool* is_open,
                             ImGui::TableSetColumnIndex(3);
                             ImGui::PushID(static_cast<int>(i));
                             if (ImGui::Button("Open", ImVec2(50, 0))) {
-                                if (on_project_selected) on_project_selected(proj.path);
-                                if (is_open) *is_open = false;
+                                if (exists) {
+                                    if (on_project_selected) on_project_selected(proj.path);
+                                    if (is_open) *is_open = false;
+                                } else {
+                                    m_error_message = std::format("Project path does not exist on disk: '{}'", proj.path);
+                                }
                             }
                             ImGui::SameLine();
                             if (ImGui::Button("Remove", ImVec2(55, 0))) {
@@ -507,6 +539,18 @@ void ProjectHub::render(EditorPreferences& preferences, bool* is_open,
                                     proj_count++;
                                     std::string p_name = entry.path().filename().generic_string();
                                     std::string p_path = entry.path().generic_string();
+
+                                    std::string file_content;
+                                    if (engine::core::FileSystem::read_file_string(manifest.string(), file_content)) {
+                                        try {
+                                            auto tbl = toml::parse(file_content);
+                                            if (auto* p = tbl["project"].as_table()) {
+                                                if (auto* n = (*p)["name"].as_string()) {
+                                                    p_name = n->get();
+                                                }
+                                            }
+                                        } catch (...) {}
+                                    }
 
                                     ImGui::PushID(proj_count);
                                     if (ImGui::Button("Open", ImVec2(60, 24))) {

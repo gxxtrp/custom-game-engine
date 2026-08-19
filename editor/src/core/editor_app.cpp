@@ -1255,6 +1255,7 @@ void EditorApp::step() {
     // 2. Simulation Tick via EditorStateManager & Autosave
     m_state_manager.update(m_active_scene, dt);
     m_autosave_manager.update(m_active_scene, dt);
+    m_active_scene.update_transforms();
 
     // 3. ImGui New Frame & DockSpace
     ImGui_ImplVulkan_NewFrame();

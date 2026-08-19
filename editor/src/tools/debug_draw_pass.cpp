@@ -12,13 +12,14 @@ bool DebugDrawPass::world_to_screen(const engine::core::Vec3& world_pos,
                                     const engine::core::Vec2& vp_size, 
                                     ImVec2& out_screen) {
     engine::core::Vec4 clip = vp * engine::core::Vec4(world_pos.x, world_pos.y, world_pos.z, 1.0f);
-    if (clip.w <= 0.001f) return false;
+    if (clip.w <= 0.001f || clip.z < 0.0f) return false;
 
     float ndc_x = clip.x / clip.w;
     float ndc_y = clip.y / clip.w;
 
+    // In Vulkan NDC, Y goes from -1.0 (top) to +1.0 (bottom)
     out_screen.x = vp_pos.x + (ndc_x * 0.5f + 0.5f) * vp_size.x;
-    out_screen.y = vp_pos.y + (1.0f - (ndc_y * 0.5f + 0.5f)) * vp_size.y;
+    out_screen.y = vp_pos.y + (ndc_y * 0.5f + 0.5f) * vp_size.y;
     return true;
 }
 
@@ -119,22 +120,39 @@ void DebugDrawPass::render_debug_overlay(engine::scene::Scene& scene,
             bool is_selected = selection.is_selected(e);
             ImU32 color = is_selected ? IM_COL32(80, 255, 120, 240) : IM_COL32(40, 200, 80, 140);
 
-            engine::core::Vec3 center = transform.position + transform.rotation.rotate(col.offset);
-            engine::core::Quat rot = transform.rotation * col.rotation;
+            engine::core::Vec3 world_pos = transform.position;
+            engine::core::Quat world_rot = transform.rotation;
+            engine::core::Vec3 world_scale = transform.scale;
+            if (e.has<engine::scene::WorldTransformComponent>()) {
+                const auto& wt = e.get<engine::scene::WorldTransformComponent>();
+                wt.matrix.decompose(world_pos, world_rot, world_scale);
+            }
+
+            engine::core::Vec3 center = world_pos + world_rot.rotate(col.offset);
+            engine::core::Quat rot = world_rot * col.rotation;
 
             switch (col.shape_type) {
                 case engine::physics::ColliderShapeType::Box: {
                     engine::core::Vec3 half_ext = engine::core::Vec3(
-                        col.box_half_extents.x * transform.scale.x,
-                        col.box_half_extents.y * transform.scale.y,
-                        col.box_half_extents.z * transform.scale.z
+                        col.box_half_extents.x * world_scale.x,
+                        col.box_half_extents.y * world_scale.y,
+                        col.box_half_extents.z * world_scale.z
                     );
                     draw_wire_box(draw_list, vp, viewport_pos, viewport_size, center, half_ext, rot, color);
                     break;
                 }
                 case engine::physics::ColliderShapeType::Sphere: {
-                    float r = col.radius * std::max({ transform.scale.x, transform.scale.y, transform.scale.z });
+                    float r = col.radius * std::max({ world_scale.x, world_scale.y, world_scale.z });
                     draw_wire_sphere(draw_list, vp, viewport_pos, viewport_size, center, r, color);
+                    break;
+                }
+                case engine::physics::ColliderShapeType::Capsule: {
+                    engine::core::Vec3 half_ext = engine::core::Vec3(
+                        col.radius * world_scale.x,
+                        (col.half_height + col.radius) * world_scale.y,
+                        col.radius * world_scale.z
+                    );
+                    draw_wire_box(draw_list, vp, viewport_pos, viewport_size, center, half_ext, rot, color);
                     break;
                 }
                 default: {

@@ -49,7 +49,7 @@ void EditorCamera::mouse_pan(const core::Vec2& delta) {
 }
 
 void EditorCamera::mouse_rotate(const core::Vec2& delta) {
-    m_yaw += delta.x * 0.005f;
+    m_yaw -= delta.x * 0.005f;
     m_pitch -= delta.y * 0.005f;
     m_pitch = std::clamp(m_pitch, -1.55f, 1.55f);
 }

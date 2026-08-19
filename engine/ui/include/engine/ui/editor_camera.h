@@ -25,6 +25,16 @@ public:
     float get_distance() const { return m_distance; }
     void set_distance(float dist) { m_distance = dist; update_view(); }
 
+    core::Vec3 get_forward() const {
+        return (m_focal_point - m_position).normalized();
+    }
+    core::Vec3 get_right() const {
+        return core::Vec3(m_view_matrix.cols[0].x, m_view_matrix.cols[1].x, m_view_matrix.cols[2].x);
+    }
+    core::Vec3 get_up() const {
+        return core::Vec3(m_view_matrix.cols[0].y, m_view_matrix.cols[1].y, m_view_matrix.cols[2].y);
+    }
+
 private:
     void update_view();
     void mouse_pan(const core::Vec2& delta);
