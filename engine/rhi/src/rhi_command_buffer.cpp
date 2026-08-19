@@ -213,4 +213,8 @@ void RhiCommandBuffer::draw_indexed(uint32_t index_count, uint32_t instance_coun
     vkCmdDrawIndexed(m_cmd, index_count, instance_count, first_index, vertex_offset, first_instance);
 }
 
+void RhiCommandBuffer::push_constants(VkPipelineLayout layout, VkShaderStageFlags stages, uint32_t offset, uint32_t size, const void* values) {
+    vkCmdPushConstants(m_cmd, layout, stages, offset, size, values);
+}
+
 } // namespace engine::rhi

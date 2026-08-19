@@ -66,9 +66,13 @@ bool RhiGraphicsPipeline::init(const GraphicsPipelineDesc& desc) {
     dynamic_state.dynamicStateCount = static_cast<uint32_t>(dynamic_states.size());
     dynamic_state.pDynamicStates = dynamic_states.data();
 
-    // Vertex Input (empty default for procedural/bufferless geometry)
+    // Vertex Input
     VkPipelineVertexInputStateCreateInfo vertex_input_info{};
     vertex_input_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vertex_input_info.vertexBindingDescriptionCount = static_cast<uint32_t>(desc.vertex_bindings.size());
+    vertex_input_info.pVertexBindingDescriptions = desc.vertex_bindings.empty() ? nullptr : desc.vertex_bindings.data();
+    vertex_input_info.vertexAttributeDescriptionCount = static_cast<uint32_t>(desc.vertex_attributes.size());
+    vertex_input_info.pVertexAttributeDescriptions = desc.vertex_attributes.empty() ? nullptr : desc.vertex_attributes.data();
 
     // Input Assembly
     VkPipelineInputAssemblyStateCreateInfo input_assembly{};
@@ -136,6 +140,8 @@ bool RhiGraphicsPipeline::init(const GraphicsPipelineDesc& desc) {
     } else {
         VkPipelineLayoutCreateInfo pipeline_layout_info{};
         pipeline_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        pipeline_layout_info.pushConstantRangeCount = static_cast<uint32_t>(desc.push_constant_ranges.size());
+        pipeline_layout_info.pPushConstantRanges = desc.push_constant_ranges.empty() ? nullptr : desc.push_constant_ranges.data();
         if (vkCreatePipelineLayout(device, &pipeline_layout_info, nullptr, &m_layout) != VK_SUCCESS) {
             LOG_FATAL("RHI", "Failed to create default pipeline layout");
             return false;

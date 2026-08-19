@@ -31,6 +31,10 @@ struct GraphicsPipelineDesc {
     std::vector<Format> color_formats;
     Format depth_format{Format::Undefined};
 
+    std::vector<VkVertexInputBindingDescription> vertex_bindings;
+    std::vector<VkVertexInputAttributeDescription> vertex_attributes;
+    std::vector<VkPushConstantRange> push_constant_ranges;
+
     VkPrimitiveTopology topology{VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST};
     VkPolygonMode polygon_mode{VK_POLYGON_MODE_FILL};
     VkCullModeFlags cull_mode{VK_CULL_MODE_NONE};

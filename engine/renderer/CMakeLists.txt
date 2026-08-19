@@ -14,6 +14,7 @@ add_library(engine_renderer STATIC
     include/engine/renderer/taa.h
     include/engine/renderer/bloom.h
     include/engine/renderer/auto_exposure.h
+    include/engine/renderer/scene_renderer.h
     src/render_pass.cpp
     src/render_graph.cpp
     src/mesh.cpp
@@ -28,6 +29,7 @@ add_library(engine_renderer STATIC
     src/taa.cpp
     src/bloom.cpp
     src/auto_exposure.cpp
+    src/scene_renderer.cpp
 )
 
 target_include_directories(engine_renderer PUBLIC
@@ -35,11 +37,15 @@ target_include_directories(engine_renderer PUBLIC
     $<INSTALL_INTERFACE:include>
 )
 
+find_package(flecs CONFIG REQUIRED)
+
 target_link_libraries(engine_renderer PUBLIC
     engine_core
     engine_rhi
     engine_importer
     engine_assets
+    engine_scene
+    flecs::flecs_static
 )
 
 engine_target_compile_options(engine_renderer)

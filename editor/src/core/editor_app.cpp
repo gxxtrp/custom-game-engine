@@ -1,5 +1,6 @@
 #include "editor/core/editor_app.h"
 #include "engine/renderer/embedded_shaders.h"
+#include "engine/renderer/scene_renderer.h"
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <imgui_impl_sdl3.h>
@@ -271,6 +272,12 @@ bool EditorApp::init(const EditorAppDesc& desc) {
 
     if (!ImGui_ImplVulkan_Init(&init_info)) {
         LOG_FATAL("Editor", "Failed to initialize ImGui Vulkan backend!");
+        return false;
+    }
+
+    // 7. Initialize 3D Scene Mesh Renderer
+    if (!engine::renderer::SceneRenderer::instance().init(engine::rhi::Format::R8G8B8A8_UNORM, engine::rhi::Format::D32_SFLOAT)) {
+        LOG_FATAL("Editor", "Failed to initialize 3D Scene Renderer!");
         return false;
     }
 
@@ -1231,7 +1238,7 @@ void EditorApp::step() {
             VK_IMAGE_LAYOUT_UNDEFINED
         );
 
-        // Pass 1: Scene Forward Pass (Renders triangle into the Viewport Render Target)
+        // Pass 1: Scene Forward Pass (Renders 3D lit meshes into the Viewport Render Target)
         m_render_graph.add_pass(
             "SceneForwardPass",
             [&](engine::renderer::RenderPassBuilder& builder) {
@@ -1242,25 +1249,43 @@ void EditorApp::step() {
                     VK_ATTACHMENT_STORE_OP_STORE,
                     engine::core::Vec4(0.08f, 0.09f, 0.11f, 1.0f)
                 );
+                engine::renderer::RGTextureHandle depth_rg = builder.create_texture(engine::renderer::RGTextureDesc{
+                    .width = m_viewport_width,
+                    .height = m_viewport_height,
+                    .format = engine::rhi::Format::D32_SFLOAT,
+                    .usage = engine::rhi::TextureUsage::DepthAttachment,
+                    .debug_name = "SceneDepth"
+                });
+                builder.set_depth_attachment(depth_rg, VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_DONT_CARE, 1.0f);
             },
             [&](engine::renderer::RenderPassContext& ctx) {
                 auto& cmd = ctx.get_command_buffer();
-                cmd.set_viewport(engine::rhi::Viewport{
-                    .x = 0.0f,
-                    .y = 0.0f,
-                    .width = static_cast<float>(m_viewport_width),
-                    .height = static_cast<float>(m_viewport_height),
-                    .min_depth = 0.0f,
-                    .max_depth = 1.0f
-                });
-                cmd.set_scissor(engine::rhi::Rect2D{
-                    .offset_x = 0,
-                    .offset_y = 0,
-                    .width = m_viewport_width,
-                    .height = m_viewport_height
-                });
-                cmd.bind_pipeline(m_scene_pipeline.get_pipeline());
-                cmd.draw(3, 1, 0, 0);
+                float aspect = static_cast<float>(m_viewport_width) / static_cast<float>(std::max(m_viewport_height, 1u));
+                engine::core::Mat4 view = m_viewport.get_camera().get_view_matrix();
+                engine::core::Mat4 proj = m_viewport.get_camera().get_projection_matrix(aspect);
+                engine::core::Mat4 view_proj = proj * view;
+                engine::core::Vec3 cam_pos = m_viewport.get_camera().get_position();
+
+                engine::renderer::SceneRenderer::instance().render_scene(
+                    cmd,
+                    m_active_scene,
+                    view_proj,
+                    cam_pos,
+                    engine::rhi::Viewport{
+                        .x = 0.0f,
+                        .y = 0.0f,
+                        .width = static_cast<float>(m_viewport_width),
+                        .height = static_cast<float>(m_viewport_height),
+                        .min_depth = 0.0f,
+                        .max_depth = 1.0f
+                    },
+                    engine::rhi::Rect2D{
+                        .offset_x = 0,
+                        .offset_y = 0,
+                        .width = m_viewport_width,
+                        .height = m_viewport_height
+                    }
+                );
             }
         );
 
@@ -1387,6 +1412,7 @@ void EditorApp::shutdown() {
     m_cmd_pool.destroy();
     m_swapchain.destroy();
 
+    engine::renderer::SceneRenderer::instance().shutdown();
     engine::rhi::BindlessHeap::instance().shutdown();
     engine::rhi::RhiContext::instance().shutdown();
 

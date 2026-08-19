@@ -4,15 +4,11 @@
 namespace engine::renderer {
 
 RGTextureHandle RenderPassBuilder::create_texture(const RGTextureDesc& desc) {
-    RGTextureHandle handle = m_graph.create_texture(desc);
-    write_texture(handle, RGResourceAccess::ColorAttachmentWrite);
-    return handle;
+    return m_graph.create_texture(desc);
 }
 
 RGBufferHandle RenderPassBuilder::create_buffer(const RGBufferDesc& desc) {
-    RGBufferHandle handle = m_graph.create_buffer(desc);
-    write_buffer(handle, RGResourceAccess::ShaderWrite);
-    return handle;
+    return m_graph.create_buffer(desc);
 }
 
 void RenderPassBuilder::read_texture(RGTextureHandle handle, RGResourceAccess access) {
