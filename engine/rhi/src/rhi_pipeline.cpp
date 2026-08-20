@@ -140,6 +140,8 @@ bool RhiGraphicsPipeline::init(const GraphicsPipelineDesc& desc) {
     } else {
         VkPipelineLayoutCreateInfo pipeline_layout_info{};
         pipeline_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        pipeline_layout_info.setLayoutCount = static_cast<uint32_t>(desc.descriptor_set_layouts.size());
+        pipeline_layout_info.pSetLayouts = desc.descriptor_set_layouts.empty() ? nullptr : desc.descriptor_set_layouts.data();
         pipeline_layout_info.pushConstantRangeCount = static_cast<uint32_t>(desc.push_constant_ranges.size());
         pipeline_layout_info.pPushConstantRanges = desc.push_constant_ranges.empty() ? nullptr : desc.push_constant_ranges.data();
         if (vkCreatePipelineLayout(device, &pipeline_layout_info, nullptr, &m_layout) != VK_SUCCESS) {

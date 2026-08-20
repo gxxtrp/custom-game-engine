@@ -261,8 +261,8 @@ bool EditorApp::init(const EditorAppDesc& desc) {
     }
 
     // 7. Initialize 3D Scene Mesh Renderer
-    if (!engine::renderer::SceneRenderer::instance().init(engine::rhi::Format::R8G8B8A8_UNORM, engine::rhi::Format::D32_SFLOAT)) {
-        LOG_FATAL("Editor", "Failed to initialize 3D Scene Renderer!");
+    if (!engine::renderer::SceneRenderer::instance().init(engine::rhi::Format::R8G8B8A8_UNORM, engine::rhi::Format::R16G16B16A16_SFLOAT, engine::rhi::Format::D32_SFLOAT)) {
+        LOG_FATAL("Editor", "Failed to initialize SceneRenderer!");
         return false;
     }
 
@@ -1347,58 +1347,36 @@ void EditorApp::step() {
             VK_IMAGE_LAYOUT_UNDEFINED
         );
 
-        // Pass 1: Scene Forward Pass (Renders 3D lit meshes into the Viewport Render Target)
-        m_render_graph.add_pass(
-            "SceneForwardPass",
-            [&](engine::renderer::RenderPassBuilder& builder) {
-                builder.set_color_attachment(
-                    0,
-                    viewport_rg,
-                    VK_ATTACHMENT_LOAD_OP_CLEAR,
-                    VK_ATTACHMENT_STORE_OP_STORE,
-                    engine::core::Vec4(0.08f, 0.09f, 0.11f, 1.0f)
-                );
-                engine::renderer::RGTextureHandle depth_rg = builder.create_texture(engine::renderer::RGTextureDesc{
-                    .width = m_viewport_width,
-                    .height = m_viewport_height,
-                    .format = engine::rhi::Format::D32_SFLOAT,
-                    .usage = engine::rhi::TextureUsage::DepthAttachment,
-                    .debug_name = "SceneDepth"
-                });
-                builder.set_depth_attachment(depth_rg, VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_DONT_CARE, 1.0f);
-            },
-            [&](engine::renderer::RenderPassContext& ctx) {
-                auto& cmd = ctx.get_command_buffer();
-                float aspect = static_cast<float>(m_viewport_width) / static_cast<float>(std::max(m_viewport_height, 1u));
-                engine::core::Mat4 view = m_viewport.get_camera().get_view_matrix();
-                engine::core::Mat4 proj = m_viewport.get_camera().get_projection_matrix(aspect);
-                engine::core::Mat4 view_proj = proj * view;
-                engine::core::Vec3 cam_pos = m_viewport.get_camera().get_position();
+        float aspect = static_cast<float>(m_viewport_width) / static_cast<float>(std::max(m_viewport_height, 1u));
+        engine::core::Mat4 view = m_viewport.get_camera().get_view_matrix();
+        engine::core::Mat4 proj = m_viewport.get_camera().get_projection_matrix(aspect);
+        engine::core::Mat4 view_proj = proj * view;
 
-                engine::renderer::SceneRenderer::instance().render_scene(
-                    cmd,
-                    m_active_scene,
-                    view_proj,
-                    cam_pos,
-                    engine::rhi::Viewport{
-                        .x = 0.0f,
-                        .y = 0.0f,
-                        .width = static_cast<float>(m_viewport_width),
-                        .height = static_cast<float>(m_viewport_height),
-                        .min_depth = 0.0f,
-                        .max_depth = 1.0f
-                    },
-                    engine::rhi::Rect2D{
-                        .offset_x = 0,
-                        .offset_y = 0,
-                        .width = m_viewport_width,
-                        .height = m_viewport_height
-                    }
-                );
-            }
+        engine::renderer::RenderCamera camera{};
+        camera.view = view;
+        camera.proj = proj;
+        camera.view_proj = view_proj;
+        camera.position = m_viewport.get_camera().get_position();
+        camera.frustum = engine::core::Frustum::from_view_projection(view_proj);
+        camera.aspect = aspect;
+
+        engine::renderer::GraphicsSettings settings{};
+        settings.enable_frustum_culling = true;
+        settings.enable_vignette = true;
+        settings.vignette_intensity = 0.2f;
+        settings.tone_mapper = engine::renderer::ToneMapper::ACES;
+
+        engine::renderer::SceneRenderer::instance().setup_render_pipeline(
+            m_render_graph,
+            m_active_scene,
+            camera,
+            settings,
+            viewport_rg,
+            m_viewport_width,
+            m_viewport_height
         );
 
-        // Pass 2: Transition Viewport texture to Shader Read for ImGui Sampling
+        // Transition Viewport texture to Shader Read for ImGui Sampling
         m_render_graph.add_pass(
             "ViewportTransitionPass",
             [&](engine::renderer::RenderPassBuilder& builder) {

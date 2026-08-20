@@ -33,6 +33,7 @@ struct GraphicsPipelineDesc {
 
     std::vector<VkVertexInputBindingDescription> vertex_bindings;
     std::vector<VkVertexInputAttributeDescription> vertex_attributes;
+    std::vector<VkDescriptorSetLayout> descriptor_set_layouts;
     std::vector<VkPushConstantRange> push_constant_ranges;
 
     VkPrimitiveTopology topology{VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST};

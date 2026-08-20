@@ -130,7 +130,7 @@ bool RuntimeApp::init(const RuntimeAppDesc& desc) {
 
         // 8. Initialize Scene Renderer
         engine::rhi::Format sc_format = static_cast<engine::rhi::Format>(m_swapchain.get_format());
-        if (!engine::renderer::SceneRenderer::instance().init(sc_format, engine::rhi::Format::D32_SFLOAT)) {
+        if (!engine::renderer::SceneRenderer::instance().init(sc_format, engine::rhi::Format::R16G16B16A16_SFLOAT, engine::rhi::Format::D32_SFLOAT)) {
             LOG_FATAL("Runtime", "Failed to initialize SceneRenderer!");
             return false;
         }
@@ -303,51 +303,25 @@ void RuntimeApp::step() {
     uint32_t width = m_swapchain.get_extent().width;
     uint32_t height = m_swapchain.get_extent().height;
 
-    // Add Game Forward Pass directly into swapchain
-    m_render_graph.add_pass(
-        "GameForwardPass",
-        [&](engine::renderer::RenderPassBuilder& builder) {
-            builder.set_color_attachment(
-                0,
-                swapchain_rg,
-                VK_ATTACHMENT_LOAD_OP_CLEAR,
-                VK_ATTACHMENT_STORE_OP_STORE,
-                engine::core::Vec4(0.08f, 0.09f, 0.11f, 1.0f)
-            );
-            
-            engine::renderer::RGTextureHandle depth_rg = builder.create_texture(engine::renderer::RGTextureDesc{
-                .width = width,
-                .height = height,
-                .format = engine::rhi::Format::D32_SFLOAT,
-                .usage = engine::rhi::TextureUsage::DepthAttachment,
-                .debug_name = "SceneDepth"
-            });
-            builder.set_depth_attachment(depth_rg, VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_DONT_CARE, 1.0f);
-        },
-        [this, view_proj, camera_pos, width, height](engine::renderer::RenderPassContext& ctx) {
-            auto& cmd = ctx.get_command_buffer();
+    engine::renderer::RenderCamera camera{};
+    camera.view_proj = view_proj;
+    camera.position = camera_pos;
+    camera.frustum = engine::core::Frustum::from_view_projection(view_proj);
+    camera.aspect = aspect;
 
-            engine::renderer::SceneRenderer::instance().render_scene(
-                cmd,
-                m_scene,
-                view_proj,
-                camera_pos,
-                engine::rhi::Viewport{
-                    .x = 0.0f,
-                    .y = 0.0f,
-                    .width = static_cast<float>(width),
-                    .height = static_cast<float>(height),
-                    .min_depth = 0.0f,
-                    .max_depth = 1.0f
-                },
-                engine::rhi::Rect2D{
-                    .offset_x = 0,
-                    .offset_y = 0,
-                    .width = width,
-                    .height = height
-                }
-            );
-        }
+    engine::renderer::GraphicsSettings settings{};
+    settings.enable_frustum_culling = true;
+    settings.enable_vignette = false;
+    settings.tone_mapper = engine::renderer::ToneMapper::ACES;
+
+    engine::renderer::SceneRenderer::instance().setup_render_pipeline(
+        m_render_graph,
+        m_scene,
+        camera,
+        settings,
+        swapchain_rg,
+        width,
+        height
     );
 
     // Present Pass
