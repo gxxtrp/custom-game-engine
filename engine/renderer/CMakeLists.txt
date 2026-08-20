@@ -1,0 +1,51 @@
+add_library(engine_renderer STATIC
+    include/engine/renderer/render_graph_types.h
+    include/engine/renderer/render_pass.h
+    include/engine/renderer/render_graph.h
+    include/engine/renderer/mesh.h
+    include/engine/renderer/material.h
+    include/engine/renderer/gpu_scene.h
+    include/engine/renderer/lighting.h
+    include/engine/renderer/shadow_map.h
+    include/engine/renderer/volumetrics.h
+    include/engine/renderer/oit.h
+    include/engine/renderer/restir.h
+    include/engine/renderer/post_process.h
+    include/engine/renderer/taa.h
+    include/engine/renderer/bloom.h
+    include/engine/renderer/auto_exposure.h
+    include/engine/renderer/scene_renderer.h
+    src/render_pass.cpp
+    src/render_graph.cpp
+    src/mesh.cpp
+    src/material.cpp
+    src/gpu_scene.cpp
+    src/lighting.cpp
+    src/shadow_map.cpp
+    src/volumetrics.cpp
+    src/oit.cpp
+    src/restir.cpp
+    src/post_process.cpp
+    src/taa.cpp
+    src/bloom.cpp
+    src/auto_exposure.cpp
+    src/scene_renderer.cpp
+)
+
+target_include_directories(engine_renderer PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
+
+find_package(flecs CONFIG REQUIRED)
+
+target_link_libraries(engine_renderer PUBLIC
+    engine_core
+    engine_rhi
+    engine_importer
+    engine_assets
+    engine_scene
+    flecs::flecs_static
+)
+
+engine_target_compile_options(engine_renderer)
