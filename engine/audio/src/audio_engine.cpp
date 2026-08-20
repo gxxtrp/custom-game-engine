@@ -165,9 +165,16 @@ void AudioEngine::sync_ecs_audio(scene::Scene& scene) {
         }
     });
 
-    // 2. Update 3D Audio Sources
-    world.each([](flecs::entity e, AudioSourceComponent& source, const scene::TransformComponent& transform) {
-        // Can track active sound instances and update their 3D spatial position
+    // 2. Update Audio Sources
+    world.each([this](flecs::entity e, AudioSourceComponent& source, const scene::TransformComponent& transform) {
+        if (source.play_on_start && !source.is_playing && !source.sound_name.empty()) {
+            if (source.is_spatial) {
+                play_sound_3d(source.sound_name, transform.position, source.bus, source.volume, source.min_distance, source.max_distance);
+            } else {
+                play_sound_2d(source.sound_name, source.bus, source.volume, source.pitch);
+            }
+            source.is_playing = true;
+        }
     });
 }
 

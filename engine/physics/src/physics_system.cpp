@@ -148,23 +148,35 @@ JPH::BodyID PhysicsSystem::create_body(const core::Transform& transform,
                                       const ColliderComponent& col) {
     if (!m_initialized) return JPH::BodyID();
 
-    // 1. Create Collision Shape
+    // 1. Create Collision Shape with Transform Scale factored in
+    core::Vec3 scale = transform.scale;
+    core::Vec3 scaled_extents = core::Vec3(
+        std::max(0.01f, std::abs(col.box_half_extents.x * scale.x)),
+        std::max(0.01f, std::abs(col.box_half_extents.y * scale.y)),
+        std::max(0.01f, std::abs(col.box_half_extents.z * scale.z))
+    );
+    float max_radial_scale = std::max({std::abs(scale.x), std::abs(scale.z), 0.01f});
+    float max_uniform_scale = std::max({std::abs(scale.x), std::abs(scale.y), std::abs(scale.z), 0.01f});
+    float scaled_radius = std::max(0.01f, col.radius * max_radial_scale);
+    float scaled_sphere_radius = std::max(0.01f, col.radius * max_uniform_scale);
+    float scaled_half_height = std::max(0.01f, col.half_height * std::max(0.01f, std::abs(scale.y)));
+
     JPH::Ref<JPH::Shape> shape;
     switch (col.shape_type) {
         case ColliderShapeType::Box:
-            shape = new JPH::BoxShape(to_jolt(col.box_half_extents));
+            shape = new JPH::BoxShape(to_jolt(scaled_extents));
             break;
         case ColliderShapeType::Sphere:
-            shape = new JPH::SphereShape(col.radius);
+            shape = new JPH::SphereShape(scaled_sphere_radius);
             break;
         case ColliderShapeType::Capsule:
-            shape = new JPH::CapsuleShape(col.half_height, col.radius);
+            shape = new JPH::CapsuleShape(scaled_half_height, scaled_radius);
             break;
         case ColliderShapeType::Cylinder:
-            shape = new JPH::CylinderShape(col.half_height, col.radius);
+            shape = new JPH::CylinderShape(scaled_half_height, scaled_radius);
             break;
         default:
-            shape = new JPH::BoxShape(to_jolt(col.box_half_extents));
+            shape = new JPH::BoxShape(to_jolt(scaled_extents));
             break;
     }
 

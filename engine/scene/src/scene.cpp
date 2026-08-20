@@ -23,6 +23,7 @@ void Scene::register_components() {
     m_world.component<PointLightComponent>("PointLightComponent");
     m_world.component<SpotLightComponent>("SpotLightComponent");
     m_world.component<CameraComponent>("CameraComponent");
+    m_world.component<MaterialComponent>("MaterialComponent");
 }
 
 void Scene::register_systems() {

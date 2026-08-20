@@ -197,8 +197,11 @@ bool GameExporter::export_game(const PackagingSettings& settings, std::string& o
     std::string config_name = (settings.configuration == PackagingBuildConfig::Release) ? "x64-clang-release" : "x64-clang-debug";
     fs::path bin_dir = fs::path("build") / config_name;
 
-    // Search for runtime executable (sandbox.exe or game.exe)
-    fs::path src_exe = bin_dir / "sandbox" / "sandbox.exe";
+    // Search for runtime executable (runtime.exe, or sandbox.exe fallback)
+    fs::path src_exe = bin_dir / "runtime" / "runtime.exe";
+    if (!fs::exists(src_exe)) {
+        src_exe = bin_dir / "sandbox" / "sandbox.exe";
+    }
     if (!fs::exists(src_exe)) {
         src_exe = bin_dir / "editor" / "editor.exe";
     }

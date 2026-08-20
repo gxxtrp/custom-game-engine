@@ -22,6 +22,7 @@ private:
     // Component section drawers
     void draw_transform_editor(flecs::entity entity);
     void draw_mesh_renderer_editor(flecs::entity entity);
+    void draw_material_editor(flecs::entity entity);
     void draw_directional_light_editor(flecs::entity entity);
     void draw_point_light_editor(flecs::entity entity);
     void draw_spot_light_editor(flecs::entity entity);

@@ -27,4 +27,24 @@ target_link_libraries(engine_scene PUBLIC
     tomlplusplus::tomlplusplus
 )
 
+# map_serializer needs to read physics/audio/scripting component struct definitions.
+# We add include directories only (not link deps) to avoid circular dependencies,
+# since engine_physics/engine_audio/engine_scripting already depend on engine_scene.
+find_package(Jolt CONFIG REQUIRED)
+find_package(sol2 CONFIG REQUIRED)
+find_package(Lua REQUIRED)
+
+target_include_directories(engine_scene PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../physics/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../audio/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../scripting/include
+    ${LUA_INCLUDE_DIR}
+)
+
+target_link_libraries(engine_scene PRIVATE
+    Jolt::Jolt
+    sol2::sol2
+    ${LUA_LIBRARIES}
+)
+
 engine_target_compile_options(engine_scene)

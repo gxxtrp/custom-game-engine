@@ -182,6 +182,7 @@ void InspectorPanel::draw_single_entity_inspector(flecs::entity entity, engine::
     // --- 2. Render Attached Component Editors ---
     if (entity.has<engine::scene::TransformComponent>()) draw_transform_editor(entity);
     if (entity.has<engine::scene::MeshRendererComponent>()) draw_mesh_renderer_editor(entity);
+    if (entity.has<engine::scene::MaterialComponent>()) draw_material_editor(entity);
     if (entity.has<engine::scene::DirectionalLightComponent>()) draw_directional_light_editor(entity);
     if (entity.has<engine::scene::PointLightComponent>()) draw_point_light_editor(entity);
     if (entity.has<engine::scene::SpotLightComponent>()) draw_spot_light_editor(entity);
@@ -328,6 +329,44 @@ void InspectorPanel::draw_mesh_renderer_editor(flecs::entity entity) {
         ImGui::SameLine(0, 16.0f);
         ImGui::Checkbox("Receive Shadows", &mr.receive_shadows);
         ImGui::Checkbox("Is Visible", &mr.is_visible);
+    }
+}
+
+void InspectorPanel::draw_material_editor(flecs::entity entity) {
+    bool header_open = ImGui::CollapsingHeader("Material", ImGuiTreeNodeFlags_DefaultOpen);
+
+    if (ImGui::BeginPopupContextItem("MaterialContextMenu")) {
+        if (ImGui::MenuItem("Reset Material")) {
+            entity.set<engine::scene::MaterialComponent>(engine::scene::MaterialComponent{});
+        }
+        if (ImGui::MenuItem("Remove Material")) {
+            entity.remove<engine::scene::MaterialComponent>();
+        }
+        ImGui::EndPopup();
+    }
+
+    if (header_open) {
+        auto& mat = entity.ensure<engine::scene::MaterialComponent>();
+
+        float color[4] = { mat.base_color.x, mat.base_color.y, mat.base_color.z, mat.base_color.w };
+        if (ImGui::ColorEdit4("Base Color", color)) {
+            mat.base_color = engine::core::Vec4(color[0], color[1], color[2], color[3]);
+        }
+
+        ImGui::SliderFloat("Metallic", &mat.metallic, 0.0f, 1.0f);
+        ImGui::SliderFloat("Roughness", &mat.roughness, 0.04f, 1.0f);
+
+        float emissive[3] = { mat.emissive.x, mat.emissive.y, mat.emissive.z };
+        if (ImGui::ColorEdit3("Emissive Color", emissive)) {
+            mat.emissive = engine::core::Vec3(emissive[0], emissive[1], emissive[2]);
+        }
+        ImGui::DragFloat("Emissive Strength", &mat.emissive_strength, 0.1f, 0.0f, 100.0f);
+
+        if (mat.albedo_texture_uuid.is_valid()) {
+            ImGui::Text("Albedo Texture: %s", mat.albedo_texture_uuid.to_string().c_str());
+        } else {
+            ImGui::TextDisabled("Albedo Texture: None");
+        }
     }
 }
 
@@ -619,6 +658,12 @@ void InspectorPanel::draw_add_component_popup(flecs::entity entity) {
         if (matches("Mesh Renderer") && !entity.has<engine::scene::MeshRendererComponent>()) {
             if (ImGui::MenuItem("[Rendering] Mesh Renderer")) {
                 entity.emplace<engine::scene::MeshRendererComponent>();
+                ImGui::CloseCurrentPopup();
+            }
+        }
+        if (matches("Material") && !entity.has<engine::scene::MaterialComponent>()) {
+            if (ImGui::MenuItem("[Rendering] Material")) {
+                entity.emplace<engine::scene::MaterialComponent>();
                 ImGui::CloseCurrentPopup();
             }
         }

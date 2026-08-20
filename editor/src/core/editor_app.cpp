@@ -339,6 +339,10 @@ void EditorApp::create_primitive_entity(std::string_view type) {
             .scale = Vec3(1.0f, 1.0f, 1.0f)
         });
         entity.set<MeshRendererComponent>(MeshRendererComponent{ .is_visible = true });
+        entity.set<MaterialComponent>(MaterialComponent{ 
+            .base_color = Vec4(0.95f, 0.55f, 0.20f, 1.0f), // Warm Orange
+            .roughness = 0.5f 
+        });
         entity.set<RigidBodyComponent>(RigidBodyComponent{ .motion_type = BodyMotionType::Dynamic, .mass = 1.0f });
         entity.set<ColliderComponent>(ColliderComponent{ 
             .shape_type = ColliderShapeType::Box,
@@ -351,6 +355,10 @@ void EditorApp::create_primitive_entity(std::string_view type) {
             .scale = Vec3(1.0f, 1.0f, 1.0f)
         });
         entity.set<MeshRendererComponent>(MeshRendererComponent{ .is_visible = true });
+        entity.set<MaterialComponent>(MaterialComponent{ 
+            .base_color = Vec4(0.90f, 0.25f, 0.35f, 1.0f), // Crimson Red
+            .roughness = 0.3f 
+        });
         entity.set<RigidBodyComponent>(RigidBodyComponent{ .motion_type = BodyMotionType::Dynamic, .mass = 1.0f });
         entity.set<ColliderComponent>(ColliderComponent{ 
             .shape_type = ColliderShapeType::Sphere,
@@ -363,6 +371,10 @@ void EditorApp::create_primitive_entity(std::string_view type) {
             .scale = Vec3(20.0f, 0.1f, 20.0f)
         });
         entity.set<MeshRendererComponent>(MeshRendererComponent{ .is_visible = true });
+        entity.set<MaterialComponent>(MaterialComponent{ 
+            .base_color = Vec4(0.25f, 0.55f, 0.35f, 1.0f), // Forest Green
+            .roughness = 0.8f 
+        });
         entity.set<RigidBodyComponent>(RigidBodyComponent{ .motion_type = BodyMotionType::Static });
         entity.set<ColliderComponent>(ColliderComponent{ 
             .shape_type = ColliderShapeType::Box,
@@ -375,6 +387,10 @@ void EditorApp::create_primitive_entity(std::string_view type) {
             .scale = Vec3(1.0f, 1.0f, 1.0f)
         });
         entity.set<MeshRendererComponent>(MeshRendererComponent{ .is_visible = true });
+        entity.set<MaterialComponent>(MaterialComponent{ 
+            .base_color = Vec4(0.35f, 0.65f, 0.85f, 1.0f), // Slate Blue
+            .roughness = 0.4f 
+        });
         entity.set<RigidBodyComponent>(RigidBodyComponent{ .motion_type = BodyMotionType::Dynamic, .mass = 1.0f });
         entity.set<ColliderComponent>(ColliderComponent{ 
             .shape_type = ColliderShapeType::Capsule,
@@ -405,6 +421,10 @@ void EditorApp::create_primitive_entity(std::string_view type) {
         entity = m_active_scene.create_entity("PlayerController");
         entity.set<TransformComponent>(TransformComponent{ .position = Vec3(0.0f, 1.5f, 0.0f) });
         entity.set<MeshRendererComponent>(MeshRendererComponent{ .is_visible = true });
+        entity.set<MaterialComponent>(MaterialComponent{ 
+            .base_color = Vec4(0.20f, 0.60f, 1.0f, 1.0f), // Player Cyan
+            .roughness = 0.35f 
+        });
         entity.set<AudioSourceComponent>(AudioSourceComponent{ .sound_name = "sfx_footstep.wav", .volume = 0.8f });
         entity.set<ScriptComponent>(ScriptComponent{ .script_path = "/scripts/player_controller.lua", .class_name = "PlayerController" });
         entity.set<RigidBodyComponent>(RigidBodyComponent{ .motion_type = BodyMotionType::Dynamic, .mass = 70.0f });

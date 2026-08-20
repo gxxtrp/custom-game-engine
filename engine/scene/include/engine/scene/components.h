@@ -87,4 +87,15 @@ struct CameraComponent {
     }
 };
 
+struct MaterialComponent {
+    core::Vec4 base_color{0.8f, 0.8f, 0.8f, 1.0f};
+    float metallic{0.0f};
+    float roughness{0.5f};
+    core::Vec3 emissive{0.0f, 0.0f, 0.0f};
+    float emissive_strength{1.0f};
+    assets::UUID albedo_texture_uuid;
+    assets::UUID normal_texture_uuid;
+    assets::UUID metallic_roughness_texture_uuid;
+};
+
 } // namespace engine::scene

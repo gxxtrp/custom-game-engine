@@ -132,7 +132,11 @@ void SceneRenderer::render_scene(rhi::RhiCommandBuffer& cmd,
         light_intensity = light.intensity;
         if (e.has<scene::TransformComponent>()) {
             const auto& t = e.get<scene::TransformComponent>();
-            light_dir = t.position.length_sq() > 0.001f ? t.position.normalized() : light_dir;
+            // Use quaternion rotation to calculate light direction (default down vector rotated by orientation)
+            light_dir = t.rotation.rotate(core::Vec3(0.0f, -1.0f, 0.0f)).normalized();
+            if (light_dir.length_sq() < 0.0001f) {
+                light_dir = core::Vec3(0.0f, -1.0f, 0.0f);
+            }
         }
     });
 
@@ -161,17 +165,13 @@ void SceneRenderer::render_scene(rhi::RhiCommandBuffer& cmd,
             world_mat = e.get<scene::WorldTransformComponent>().matrix;
         }
 
-        // Color coding by entity type for clear distinction
-        core::Vec4 base_color(0.85f, 0.88f, 0.92f, 1.0f);
-        std::string name = e.name().c_str();
-        if (name.find("Ground") != std::string::npos || name.find("Plane") != std::string::npos) {
-            base_color = core::Vec4(0.25f, 0.55f, 0.35f, 1.0f); // Forest green
-        } else if (name.find("Player") != std::string::npos) {
-            base_color = core::Vec4(0.20f, 0.60f, 1.0f, 1.0f);  // Cyan blue
-        } else if (name.find("Box") != std::string::npos || name.find("Cube") != std::string::npos) {
-            base_color = core::Vec4(0.95f, 0.55f, 0.20f, 1.0f); // Orange
-        } else if (name.find("Sphere") != std::string::npos) {
-            base_color = core::Vec4(0.90f, 0.25f, 0.35f, 1.0f); // Crimson
+        // Data-driven material properties (no entity name string heuristics)
+        core::Vec4 base_color(0.85f, 0.85f, 0.85f, 1.0f);
+        float roughness = 0.5f;
+        if (e.has<scene::MaterialComponent>()) {
+            const auto& mat = e.get<scene::MaterialComponent>();
+            base_color = mat.base_color;
+            roughness = mat.roughness;
         }
 
         // Push Constants
@@ -181,7 +181,7 @@ void SceneRenderer::render_scene(rhi::RhiCommandBuffer& cmd,
         pc.base_color = base_color;
         pc.light_dir_intensity = core::Vec4(light_dir.x, light_dir.y, light_dir.z, light_intensity);
         pc.light_color_ambient = core::Vec4(light_color.x, light_color.y, light_color.z, 0.20f);
-        pc.camera_pos_roughness = core::Vec4(camera_pos.x, camera_pos.y, camera_pos.z, 0.45f);
+        pc.camera_pos_roughness = core::Vec4(camera_pos.x, camera_pos.y, camera_pos.z, roughness);
 
         cmd.push_constants(m_pipeline.get_layout(),
                            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
