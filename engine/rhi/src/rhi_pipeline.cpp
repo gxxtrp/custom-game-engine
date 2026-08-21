@@ -8,12 +8,12 @@ RhiShaderModule::~RhiShaderModule() {
     destroy();
 }
 
-bool RhiShaderModule::init_from_spirv(const uint32_t* code, size_t size_bytes, ShaderStage stage) {
+bool RhiShaderModule::init_from_spirv(const void* code, size_t size_bytes, ShaderStage stage) {
     m_stage = stage;
     VkShaderModuleCreateInfo info{};
     info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
     info.codeSize = size_bytes;
-    info.pCode = code;
+    info.pCode = reinterpret_cast<const uint32_t*>(code);
 
     VkResult res = vkCreateShaderModule(RhiContext::instance().get_device(), &info, nullptr, &m_module);
     if (res != VK_SUCCESS) {

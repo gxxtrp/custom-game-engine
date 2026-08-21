@@ -74,7 +74,7 @@ bool SceneRenderer::init(rhi::Format sdr_format, rhi::Format hdr_format, rhi::Fo
     shadow_pdesc.depth_format = depth_format;
 
     shadow_pdesc.vertex_bindings = { MeshVertex::get_binding_description() };
-    shadow_pdesc.vertex_attributes = MeshVertex::get_attribute_descriptions();
+    shadow_pdesc.vertex_attributes = { MeshVertex::get_attribute_descriptions()[0] };
 
     VkPushConstantRange shadow_pc_range{};
     shadow_pc_range.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;

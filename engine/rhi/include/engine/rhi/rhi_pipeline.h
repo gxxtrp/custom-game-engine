@@ -13,7 +13,7 @@ public:
     RhiShaderModule() = default;
     ~RhiShaderModule();
 
-    bool init_from_spirv(const uint32_t* code, size_t size_bytes, ShaderStage stage);
+    bool init_from_spirv(const void* code, size_t size_bytes, ShaderStage stage);
     void destroy();
 
     VkShaderModule get_handle() const { return m_module; }

@@ -14,37 +14,31 @@ VkVertexInputBindingDescription MeshVertex::get_binding_description() {
 }
 
 std::vector<VkVertexInputAttributeDescription> MeshVertex::get_attribute_descriptions() {
-    std::vector<VkVertexInputAttributeDescription> attributes(5);
+    std::vector<VkVertexInputAttributeDescription> attributes(4);
 
-    // Position: vec3
+    // Position: vec3 (location = 0)
     attributes[0].binding = 0;
     attributes[0].location = 0;
     attributes[0].format = VK_FORMAT_R32G32B32_SFLOAT;
     attributes[0].offset = offsetof(MeshVertex, position);
 
-    // Normal: vec3
+    // Normal: vec3 (location = 1)
     attributes[1].binding = 0;
     attributes[1].location = 1;
     attributes[1].format = VK_FORMAT_R32G32B32_SFLOAT;
     attributes[1].offset = offsetof(MeshVertex, normal);
 
-    // Tangent: vec4
+    // UV: vec2 (location = 2)
     attributes[2].binding = 0;
     attributes[2].location = 2;
-    attributes[2].format = VK_FORMAT_R32G32B32A32_SFLOAT;
-    attributes[2].offset = offsetof(MeshVertex, tangent);
+    attributes[2].format = VK_FORMAT_R32G32_SFLOAT;
+    attributes[2].offset = offsetof(MeshVertex, uv);
 
-    // UV: vec2
+    // Color: vec4 (location = 3)
     attributes[3].binding = 0;
     attributes[3].location = 3;
-    attributes[3].format = VK_FORMAT_R32G32_SFLOAT;
-    attributes[3].offset = offsetof(MeshVertex, uv);
-
-    // Color: vec4
-    attributes[4].binding = 0;
-    attributes[4].location = 4;
-    attributes[4].format = VK_FORMAT_R32G32B32A32_SFLOAT;
-    attributes[4].offset = offsetof(MeshVertex, color);
+    attributes[3].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+    attributes[3].offset = offsetof(MeshVertex, color);
 
     return attributes;
 }
