@@ -8,6 +8,9 @@ add_library(engine_rhi STATIC
     include/engine/rhi/rhi_buffer.h
     include/engine/rhi/rhi_texture.h
     include/engine/rhi/rhi_bindless.h
+    include/engine/rhi/viewport_presenter.h
+    include/engine/rhi/window_swapchain_presenter.h
+    include/engine/rhi/headless_presenter.h
     src/rhi_context.cpp
     src/rhi_swapchain.cpp
     src/rhi_command_buffer.cpp
@@ -16,6 +19,8 @@ add_library(engine_rhi STATIC
     src/rhi_buffer.cpp
     src/rhi_texture.cpp
     src/rhi_bindless.cpp
+    src/window_swapchain_presenter.cpp
+    src/headless_presenter.cpp
 )
 
 target_include_directories(engine_rhi PUBLIC

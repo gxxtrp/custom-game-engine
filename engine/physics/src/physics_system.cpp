@@ -1,4 +1,5 @@
 #include "engine/physics/physics_system.h"
+#include "engine/scene/scene_subsystem.h"
 #include "engine/core/log.h"
 #include <Jolt/RegisterTypes.h>
 #include <Jolt/Core/Factory.h>
@@ -70,12 +71,46 @@ public:
     }
 };
 
+PhysicsSystem::PhysicsSystem() = default;
+
 PhysicsSystem& PhysicsSystem::instance() {
     static PhysicsSystem s_instance;
     return s_instance;
 }
 
 PhysicsSystem::~PhysicsSystem() {
+    shutdown();
+}
+
+void PhysicsSystem::declare_dependencies(core::SubsystemDependencyBuilder& builder) {
+    (void)builder;
+}
+
+bool PhysicsSystem::initialize(core::EngineContext& context) {
+    if (!init()) {
+        return false;
+    }
+    context.register_service<PhysicsSystem>(this);
+    if (auto* scene_sub = context.try_get<scene::SceneSubsystem>()) {
+        register_scene(scene_sub->get_active_scene());
+    }
+    return true;
+}
+
+void PhysicsSystem::tick(core::EngineContext& context, core::ExecutionPhase phase, float dt) {
+    if (phase == core::ExecutionPhase::Simulation) {
+        if (auto* scene_sub = context.try_get<scene::SceneSubsystem>()) {
+            sync_to_physics(scene_sub->get_active_scene());
+        }
+        update(dt);
+        if (auto* scene_sub = context.try_get<scene::SceneSubsystem>()) {
+            sync_from_physics(scene_sub->get_active_scene());
+        }
+    }
+}
+
+void PhysicsSystem::shutdown(core::EngineContext& context) {
+    context.unregister_service<PhysicsSystem>();
     shutdown();
 }
 

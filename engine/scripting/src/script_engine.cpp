@@ -1,4 +1,6 @@
 #include "engine/scripting/script_engine.h"
+#include "engine/scene/scene_subsystem.h"
+#include "engine/core/engine_context.h"
 #include "engine/core/log.h"
 #include "engine/vfs/vfs.h"
 #include "engine/input/input_manager.h"
@@ -130,12 +132,42 @@ static core::KeyCode string_to_keycode(std::string_view name) {
     return core::KeyCode::Unknown;
 }
 
+ScriptEngine::ScriptEngine() = default;
+
 ScriptEngine& ScriptEngine::instance() {
     static ScriptEngine s_instance;
     return s_instance;
 }
 
 ScriptEngine::~ScriptEngine() {
+    shutdown();
+}
+
+void ScriptEngine::declare_dependencies(core::SubsystemDependencyBuilder& builder) {
+    builder.require<scene::SceneSubsystem>();
+}
+
+bool ScriptEngine::initialize(core::EngineContext& context) {
+    if (!init()) {
+        return false;
+    }
+    context.register_service<ScriptEngine>(this);
+    if (auto* scene_sub = context.try_get<scene::SceneSubsystem>()) {
+        register_scene(scene_sub->get_active_scene());
+    }
+    return true;
+}
+
+void ScriptEngine::tick(core::EngineContext& context, core::ExecutionPhase phase, float dt) {
+    if (phase == core::ExecutionPhase::Simulation) {
+        if (auto* scene_sub = context.try_get<scene::SceneSubsystem>()) {
+            sync_ecs_scripts(scene_sub->get_active_scene(), dt);
+        }
+    }
+}
+
+void ScriptEngine::shutdown(core::EngineContext& context) {
+    context.unregister_service<ScriptEngine>();
     shutdown();
 }
 

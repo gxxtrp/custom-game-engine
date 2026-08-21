@@ -2,6 +2,8 @@
 
 #include "engine/core/config.h"
 #include "engine/core/math.h"
+#include "engine/core/subsystem.h"
+#include "engine/core/engine_context.h"
 #include "engine/audio/audio_types.h"
 #include "engine/audio/audio_components.h"
 #include "engine/scene/scene.h"
@@ -12,10 +14,28 @@ namespace engine::audio {
 
 struct AudioEngineImpl;
 
-class AudioEngine {
+class AudioEngine final : public core::ISubsystem {
 public:
     static AudioEngine& instance();
 
+    AudioEngine();
+    ~AudioEngine() override;
+
+    // ISubsystem Interface
+    [[nodiscard]] const char* get_name() const noexcept override {
+        return "AudioEngine";
+    }
+
+    void declare_dependencies(core::SubsystemDependencyBuilder& builder) override;
+    bool initialize(core::EngineContext& context) override;
+    void tick(core::EngineContext& context, core::ExecutionPhase phase, float dt) override;
+    void shutdown(core::EngineContext& context) override;
+
+    [[nodiscard]] bool participates_in_phase(core::ExecutionPhase phase) const noexcept override {
+        return phase == core::ExecutionPhase::PostSimulation;
+    }
+
+    // Direct Lifecycle Management
     bool init(const AudioConfig& config = {});
     void shutdown();
     void update(float dt);
@@ -43,9 +63,6 @@ public:
     bool is_initialized() const { return m_initialized; }
 
 private:
-    AudioEngine();
-    ~AudioEngine();
-
     AudioConfig m_config{};
     std::unique_ptr<AudioEngineImpl> m_impl;
 

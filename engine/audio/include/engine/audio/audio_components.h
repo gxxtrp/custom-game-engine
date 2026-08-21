@@ -2,6 +2,7 @@
 
 #include "engine/core/config.h"
 #include "engine/core/math.h"
+#include "engine/core/reflection.h"
 #include "engine/assets/uuid.h"
 #include "engine/audio/audio_types.h"
 
@@ -41,3 +42,21 @@ struct AudioSourceComponent {
 };
 
 } // namespace engine::audio
+
+REFLECT_STRUCT_BEGIN(engine::audio::AudioListenerComponent)
+    REFLECT_FIELD(is_active, "Is Active", "Designates main spatial audio listener")
+REFLECT_STRUCT_END()
+
+REFLECT_STRUCT_BEGIN(engine::audio::AudioSourceComponent)
+    REFLECT_FIELD(sound_name, "Sound Name", "Audio clip descriptor or virtual path")
+    REFLECT_FIELD(sound_asset_uuid, "Sound Asset UUID", "Referenced sound asset UUID")
+    REFLECT_FIELD(bus, "Audio Bus", "Mixing bus target (Master, SFX, Music, Voice, Ambient)")
+    REFLECT_FIELD(volume, "Volume", "Gain multiplier [0.0 - 1.0]")
+    REFLECT_FIELD(pitch, "Pitch", "Frequency pitch multiplier")
+    REFLECT_FIELD(is_looping, "Is Looping", "Loops audio playback indefinitely")
+    REFLECT_FIELD(is_spatial, "Is Spatial", "Enables 3D spatial attenuation and panning")
+    REFLECT_FIELD(play_on_start, "Play On Start", "Starts audio playback immediately on scene load")
+    REFLECT_FIELD(min_distance, "Min Distance", "Minimum full-volume distance")
+    REFLECT_FIELD(max_distance, "Max Distance", "Maximum audible distance")
+    REFLECT_FIELD(rolloff_factor, "Rolloff Factor", "Distance attenuation rolloff curve factor")
+REFLECT_STRUCT_END()

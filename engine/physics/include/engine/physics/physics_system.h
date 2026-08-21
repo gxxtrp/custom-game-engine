@@ -2,6 +2,8 @@
 
 #include "engine/core/config.h"
 #include "engine/core/math.h"
+#include "engine/core/subsystem.h"
+#include "engine/core/engine_context.h"
 #include "engine/physics/physics_types.h"
 #include "engine/physics/physics_components.h"
 #include "engine/scene/scene.h"
@@ -13,10 +15,28 @@ class BPLayerInterfaceImpl;
 class ObjectVsBroadPhaseLayerFilterImpl;
 class ObjectLayerPairFilterImpl;
 
-class PhysicsSystem {
+class PhysicsSystem final : public core::ISubsystem {
 public:
     static PhysicsSystem& instance();
 
+    PhysicsSystem();
+    ~PhysicsSystem() override;
+
+    // ISubsystem Interface
+    [[nodiscard]] const char* get_name() const noexcept override {
+        return "PhysicsSystem";
+    }
+
+    void declare_dependencies(core::SubsystemDependencyBuilder& builder) override;
+    bool initialize(core::EngineContext& context) override;
+    void tick(core::EngineContext& context, core::ExecutionPhase phase, float dt) override;
+    void shutdown(core::EngineContext& context) override;
+
+    [[nodiscard]] bool participates_in_phase(core::ExecutionPhase phase) const noexcept override {
+        return phase == core::ExecutionPhase::Simulation;
+    }
+
+    // Direct Lifecycle Management
     bool init(uint32_t max_bodies = 10240, 
               uint32_t num_body_mutexes = 0, 
               uint32_t max_body_pairs = 10240, 
@@ -55,9 +75,6 @@ public:
     JPH::BodyInterface& get_body_interface();
 
 private:
-    PhysicsSystem() = default;
-    ~PhysicsSystem();
-
     std::unique_ptr<JPH::TempAllocatorImpl> m_temp_allocator;
     std::unique_ptr<JPH::JobSystemThreadPool> m_job_system;
     std::unique_ptr<BPLayerInterfaceImpl> m_broad_phase_layer_interface;

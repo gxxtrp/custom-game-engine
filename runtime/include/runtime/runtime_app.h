@@ -1,15 +1,20 @@
 #pragma once
 
 #include "engine/core/platform.h"
+#include "engine/core/engine_kernel.h"
 #include "engine/scene/scene.h"
+#include "engine/scene/scene_subsystem.h"
 #include "engine/rhi/rhi_context.h"
-#include "engine/rhi/rhi_swapchain.h"
+#include "engine/rhi/viewport_presenter.h"
+#include "engine/rhi/window_swapchain_presenter.h"
+#include "engine/rhi/headless_presenter.h"
 #include "engine/rhi/rhi_command_buffer.h"
 #include "engine/rhi/rhi_sync.h"
 #include "engine/renderer/render_graph.h"
 #include "engine/renderer/scene_renderer.h"
 #include <string>
 #include <vector>
+#include <memory>
 
 namespace runtime {
 
@@ -32,7 +37,8 @@ public:
     bool is_running() const;
     void request_exit();
 
-    engine::scene::Scene& get_scene() { return m_scene; }
+    engine::scene::Scene& get_scene();
+    engine::core::EngineKernel& get_kernel() { return *m_kernel; }
 
 private:
     RuntimeApp();
@@ -40,7 +46,8 @@ private:
 
     RuntimeAppDesc m_desc{};
     engine::core::Window m_window;
-    engine::rhi::RhiSwapchain m_swapchain;
+    std::unique_ptr<engine::rhi::IViewportPresenter> m_presenter;
+    std::unique_ptr<engine::core::EngineKernel> m_kernel;
 
     static constexpr size_t MAX_FRAMES_IN_FLIGHT = 2;
     engine::rhi::RhiCommandPool m_cmd_pool;
@@ -50,12 +57,10 @@ private:
     std::vector<engine::rhi::RhiSemaphore> m_render_finished_semaphores;
 
     engine::renderer::RenderGraph m_render_graph;
-    engine::scene::Scene m_scene;
     engine::core::FrameTimer m_timer;
 
     uint32_t m_current_frame{0};
     uint32_t m_rendered_frames{0};
-    float m_physics_accumulator{0.0f};
     bool m_initialized{false};
     bool m_running{false};
 };

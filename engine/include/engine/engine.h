@@ -6,6 +6,7 @@
 #include "engine/core/math.h"
 #include "engine/core/containers.h"
 #include "engine/core/platform.h"
+#include "engine/core/engine_kernel.h"
 #include "engine/jobs/job_system.h"
 #include "engine/events/event_bus.h"
 #include "engine/config/cvar.h"
@@ -17,7 +18,9 @@
 #include "engine/input/input_manager.h"
 #include "engine/importer/importer.h"
 #include "engine/rhi/rhi_context.h"
-#include "engine/rhi/rhi_swapchain.h"
+#include "engine/rhi/viewport_presenter.h"
+#include "engine/rhi/window_swapchain_presenter.h"
+#include "engine/rhi/headless_presenter.h"
 #include "engine/rhi/rhi_command_buffer.h"
 #include "engine/rhi/rhi_sync.h"
 #include "engine/rhi/rhi_pipeline.h"
@@ -27,6 +30,7 @@
 #include "engine/scene/components.h"
 #include "engine/scene/entity.h"
 #include "engine/scene/scene.h"
+#include "engine/scene/scene_subsystem.h"
 #include "engine/scene/map_serializer.h"
 #include "engine/scene/scene_importer.h"
 #include "engine/renderer/render_graph.h"
@@ -51,6 +55,7 @@
 #include "engine/scripting/script_types.h"
 #include "engine/scripting/script_components.h"
 #include "engine/scripting/script_engine.h"
+#include <memory>
 
 namespace engine {
 
@@ -60,6 +65,7 @@ struct EngineDesc {
     uint32_t height{720};
     bool enable_vsync{true};
     bool enable_validation{true};
+    bool headless{false};
     std::string project_manifest_path{""};
 };
 
@@ -76,7 +82,9 @@ public:
     void request_exit();
 
     core::Window& get_window() { return m_window; }
-    scene::Scene& get_active_scene() { return m_active_scene; }
+    scene::Scene& get_active_scene();
+    core::EngineKernel& get_kernel() { return *m_kernel; }
+    rhi::IViewportPresenter& get_presenter() { return *m_presenter; }
     renderer::RenderGraph& get_render_graph() { return m_render_graph; }
 
 private:
@@ -85,7 +93,8 @@ private:
 
     EngineDesc m_desc{};
     core::Window m_window;
-    rhi::RhiSwapchain m_swapchain;
+    std::unique_ptr<rhi::IViewportPresenter> m_presenter;
+    std::unique_ptr<core::EngineKernel> m_kernel;
 
     static constexpr size_t MAX_FRAMES_IN_FLIGHT = 2;
     rhi::RhiCommandPool m_cmd_pool;
@@ -99,7 +108,6 @@ private:
     rhi::RhiGraphicsPipeline m_scene_pipeline;
 
     renderer::RenderGraph m_render_graph;
-    scene::Scene m_active_scene;
     core::FrameTimer m_timer;
     core::DynamicArray<core::PlatformEvent> m_events;
 

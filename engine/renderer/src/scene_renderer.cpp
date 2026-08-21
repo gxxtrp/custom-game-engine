@@ -32,7 +32,7 @@ bool SceneRenderer::init(rhi::Format sdr_format, rhi::Format hdr_format, rhi::Fo
     rhi::GraphicsPipelineDesc mesh_pdesc{};
     mesh_pdesc.vertex_shader = &m_vert_shader;
     mesh_pdesc.fragment_shader = &m_frag_shader;
-    mesh_pdesc.color_formats = { hdr_format };
+    mesh_pdesc.color_formats = { sdr_format };
     mesh_pdesc.depth_format = depth_format;
 
     mesh_pdesc.vertex_bindings = { MeshVertex::get_binding_description() };
@@ -169,9 +169,11 @@ void SceneRenderer::shutdown() {
 }
 
 std::shared_ptr<Mesh> SceneRenderer::get_or_create_primitive(std::string_view name) {
-    auto it = m_primitive_meshes.find(std::string(name));
-    if (it != m_primitive_meshes.end()) {
-        return it->second;
+    if (name.find("Sphere") != std::string_view::npos || name.find("sphere") != std::string_view::npos) {
+        return m_primitive_meshes["Sphere"];
+    }
+    if (name.find("Plane") != std::string_view::npos || name.find("plane") != std::string_view::npos || name.find("Ground") != std::string_view::npos) {
+        return m_primitive_meshes["Plane"];
     }
     return m_primitive_meshes["Cube"];
 }
@@ -344,15 +346,7 @@ RGTextureHandle SceneRenderer::setup_render_pipeline(RenderGraph& rg,
                                                     RGTextureHandle output_sdr_target,
                                                     uint32_t width,
                                                     uint32_t height) {
-    // 1. Pass 1: Forward Mesh Pass (Renders into Transient HDR Target)
-    RGTextureHandle hdr_color_rg = rg.create_texture(RGTextureDesc{
-        .width = width,
-        .height = height,
-        .format = rhi::Format::R16G16B16A16_SFLOAT,
-        .usage = rhi::TextureUsage::ColorAttachment | rhi::TextureUsage::Sampled,
-        .debug_name = "SceneHDRColor"
-    });
-
+    // 1. Pass 1: Forward Mesh Pass (Renders directly into target SDR swapchain with Depth)
     RGTextureHandle depth_rg = rg.create_texture(RGTextureDesc{
         .width = width,
         .height = height,
@@ -366,7 +360,7 @@ RGTextureHandle SceneRenderer::setup_render_pipeline(RenderGraph& rg,
         [&](RenderPassBuilder& builder) {
             builder.set_color_attachment(
                 0,
-                hdr_color_rg,
+                output_sdr_target,
                 VK_ATTACHMENT_LOAD_OP_CLEAR,
                 VK_ATTACHMENT_STORE_OP_STORE,
                 core::Vec4(0.08f, 0.09f, 0.11f, 1.0f)
@@ -382,47 +376,6 @@ RGTextureHandle SceneRenderer::setup_render_pipeline(RenderGraph& rg,
                 camera.position,
                 camera.frustum,
                 settings.enable_frustum_culling,
-                rhi::Viewport{
-                    .x = 0.0f,
-                    .y = 0.0f,
-                    .width = static_cast<float>(width),
-                    .height = static_cast<float>(height),
-                    .min_depth = 0.0f,
-                    .max_depth = 1.0f
-                },
-                rhi::Rect2D{
-                    .offset_x = 0,
-                    .offset_y = 0,
-                    .width = width,
-                    .height = height
-                }
-            );
-        }
-    );
-
-    // 2. Pass 2: Tonemapping & Post-Processing (HDR -> Resolved SDR Target)
-    rg.add_pass(
-        "PostProcessTonemapPass",
-        [&](RenderPassBuilder& builder) {
-            builder.read_texture(hdr_color_rg, RGResourceAccess::ShaderRead);
-            builder.set_color_attachment(
-                0,
-                output_sdr_target,
-                VK_ATTACHMENT_LOAD_OP_CLEAR,
-                VK_ATTACHMENT_STORE_OP_STORE,
-                core::Vec4(0.08f, 0.09f, 0.11f, 1.0f)
-            );
-        },
-        [this, settings, width, height](RenderPassContext& ctx) {
-            auto& cmd = ctx.get_command_buffer();
-            TonemapPushConstants pc{};
-            pc.exposure = settings.exposure;
-            pc.tone_mapper = static_cast<int32_t>(settings.tone_mapper);
-            pc.vignette_intensity = settings.enable_vignette ? settings.vignette_intensity : 0.0f;
-
-            render_tonemapping(
-                cmd,
-                pc,
                 rhi::Viewport{
                     .x = 0.0f,
                     .y = 0.0f,

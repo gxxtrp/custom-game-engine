@@ -4,10 +4,12 @@ add_library(engine_scene STATIC
     include/engine/scene/scene.h
     include/engine/scene/map_serializer.h
     include/engine/scene/scene_importer.h
+    include/engine/scene/scene_subsystem.h
     src/entity.cpp
     src/scene.cpp
     src/map_serializer.cpp
     src/scene_importer.cpp
+    src/scene_subsystem.cpp
 )
 
 target_include_directories(engine_scene PUBLIC

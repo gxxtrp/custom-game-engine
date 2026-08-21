@@ -2,6 +2,8 @@
 
 #include "engine/core/config.h"
 #include "engine/core/math.h"
+#include "engine/core/subsystem.h"
+#include "engine/core/engine_context.h"
 #include "engine/scripting/script_types.h"
 #include "engine/scripting/script_components.h"
 #include "engine/scene/scene.h"
@@ -10,10 +12,28 @@
 
 namespace engine::scripting {
 
-class ScriptEngine {
+class ScriptEngine final : public core::ISubsystem {
 public:
     static ScriptEngine& instance();
 
+    ScriptEngine();
+    ~ScriptEngine() override;
+
+    // ISubsystem Interface
+    [[nodiscard]] const char* get_name() const noexcept override {
+        return "ScriptEngine";
+    }
+
+    void declare_dependencies(core::SubsystemDependencyBuilder& builder) override;
+    bool initialize(core::EngineContext& context) override;
+    void tick(core::EngineContext& context, core::ExecutionPhase phase, float dt) override;
+    void shutdown(core::EngineContext& context) override;
+
+    [[nodiscard]] bool participates_in_phase(core::ExecutionPhase phase) const noexcept override {
+        return phase == core::ExecutionPhase::Simulation;
+    }
+
+    // Direct Lifecycle Management
     bool init();
     void shutdown();
 
@@ -28,9 +48,6 @@ public:
     bool is_initialized() const { return m_initialized; }
 
 private:
-    ScriptEngine() = default;
-    ~ScriptEngine();
-
     void bind_core_math();
     void bind_logging();
     void bind_input();

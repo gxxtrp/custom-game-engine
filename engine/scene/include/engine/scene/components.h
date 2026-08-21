@@ -2,6 +2,7 @@
 
 #include "engine/core/config.h"
 #include "engine/core/math.h"
+#include "engine/core/reflection.h"
 #include "engine/assets/uuid.h"
 #include <string>
 #include <vector>
@@ -99,3 +100,74 @@ struct MaterialComponent {
 };
 
 } // namespace engine::scene
+
+// ==========================================
+// Component Reflection Registrations
+// ==========================================
+
+REFLECT_STRUCT_BEGIN(engine::scene::TagComponent)
+    REFLECT_FIELD(name, "Name", "Entity tag name")
+REFLECT_STRUCT_END()
+
+REFLECT_STRUCT_BEGIN(engine::scene::UUIDComponent)
+    REFLECT_FIELD(uuid, "UUID", "Unique 128-bit entity identifier")
+REFLECT_STRUCT_END()
+
+REFLECT_STRUCT_BEGIN(engine::scene::TransformComponent)
+    REFLECT_FIELD(position, "Position", "Local translation")
+    REFLECT_FIELD(rotation, "Rotation", "Local orientation quaternion")
+    REFLECT_FIELD(scale, "Scale", "Local 3D scaling vector")
+REFLECT_STRUCT_END()
+
+REFLECT_STRUCT_BEGIN(engine::scene::MeshRendererComponent)
+    REFLECT_FIELD(mesh_uuid, "Mesh UUID", "Referenced glTF mesh asset")
+    REFLECT_FIELD(submesh_index, "Submesh Index", "Submesh primitive slot index")
+    REFLECT_FIELD(material_uuid, "Material UUID", "Material definition asset UUID")
+    REFLECT_FIELD(cast_shadows, "Cast Shadows", "Casts shadows into cascade shadow maps")
+    REFLECT_FIELD(receive_shadows, "Receive Shadows", "Receives dynamic cascaded shadows")
+    REFLECT_FIELD(is_visible, "Is Visible", "Toggles geometry rendering")
+REFLECT_STRUCT_END()
+
+REFLECT_STRUCT_BEGIN(engine::scene::DirectionalLightComponent)
+    REFLECT_FIELD(color, "Color", "Sun / directional light RGB color")
+    REFLECT_FIELD(intensity, "Intensity", "Illuminance in Lux")
+    REFLECT_FIELD(cast_shadows, "Cast Shadows", "Enables 4-split cascaded shadow mapping")
+    REFLECT_FIELD(cascade_count, "Cascade Count", "Number of active shadow cascades")
+REFLECT_STRUCT_END()
+
+REFLECT_STRUCT_BEGIN(engine::scene::PointLightComponent)
+    REFLECT_FIELD(color, "Color", "Omni-directional light RGB color")
+    REFLECT_FIELD(intensity, "Intensity", "Luminous intensity in Candela")
+    REFLECT_FIELD(radius, "Radius", "Attenuation influence radius")
+    REFLECT_FIELD(falloff, "Falloff", "Distance attenuation exponent")
+    REFLECT_FIELD(cast_shadows, "Cast Shadows", "Enables point light cubemap shadows")
+REFLECT_STRUCT_END()
+
+REFLECT_STRUCT_BEGIN(engine::scene::SpotLightComponent)
+    REFLECT_FIELD(color, "Color", "Conical spot light RGB color")
+    REFLECT_FIELD(intensity, "Intensity", "Luminous intensity in Candela")
+    REFLECT_FIELD(range, "Range", "Maximum projection distance")
+    REFLECT_FIELD(inner_cone_angle_deg, "Inner Cone Angle", "Inner full-intensity cone angle in degrees")
+    REFLECT_FIELD(outer_cone_angle_deg, "Outer Cone Angle", "Outer cutoff cone angle in degrees")
+    REFLECT_FIELD(cast_shadows, "Cast Shadows", "Enables spot light perspective shadows")
+REFLECT_STRUCT_END()
+
+REFLECT_STRUCT_BEGIN(engine::scene::CameraComponent)
+    REFLECT_FIELD(fov_deg, "Field of View", "Vertical field of view in degrees")
+    REFLECT_FIELD(near_z, "Near Plane", "Near clipping distance")
+    REFLECT_FIELD(far_z, "Far Plane", "Far clipping distance")
+    REFLECT_FIELD(is_orthographic, "Is Orthographic", "Toggles orthographic projection mode")
+    REFLECT_FIELD(ortho_size, "Ortho Size", "Orthographic vertical view height")
+    REFLECT_FIELD(is_primary, "Is Primary", "Designates main viewport render camera")
+REFLECT_STRUCT_END()
+
+REFLECT_STRUCT_BEGIN(engine::scene::MaterialComponent)
+    REFLECT_FIELD(base_color, "Base Color", "PBR albedo RGBA tint")
+    REFLECT_FIELD(metallic, "Metallic", "Metallic factor [0.0 - 1.0]")
+    REFLECT_FIELD(roughness, "Roughness", "Roughness factor [0.0 - 1.0]")
+    REFLECT_FIELD(emissive, "Emissive", "Emissive RGB radiance vector")
+    REFLECT_FIELD(emissive_strength, "Emissive Strength", "Emissive multiplier")
+    REFLECT_FIELD(albedo_texture_uuid, "Albedo Texture", "Albedo texture UUID")
+    REFLECT_FIELD(normal_texture_uuid, "Normal Map", "Normal texture UUID")
+    REFLECT_FIELD(metallic_roughness_texture_uuid, "Metallic Roughness Map", "Metallic/Roughness texture UUID")
+REFLECT_STRUCT_END()

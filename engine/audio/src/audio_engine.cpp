@@ -1,4 +1,5 @@
 #include "engine/audio/audio_engine.h"
+#include "engine/scene/scene_subsystem.h"
 #include "engine/core/log.h"
 #include "engine/scene/components.h"
 
@@ -176,6 +177,35 @@ void AudioEngine::sync_ecs_audio(scene::Scene& scene) {
             source.is_playing = true;
         }
     });
+}
+
+void AudioEngine::declare_dependencies(core::SubsystemDependencyBuilder& builder) {
+    (void)builder;
+}
+
+bool AudioEngine::initialize(core::EngineContext& context) {
+    if (!init()) {
+        return false;
+    }
+    context.register_service<AudioEngine>(this);
+    if (auto* scene_sub = context.try_get<scene::SceneSubsystem>()) {
+        register_scene(scene_sub->get_active_scene());
+    }
+    return true;
+}
+
+void AudioEngine::tick(core::EngineContext& context, core::ExecutionPhase phase, float dt) {
+    if (phase == core::ExecutionPhase::PostSimulation) {
+        if (auto* scene_sub = context.try_get<scene::SceneSubsystem>()) {
+            sync_ecs_audio(scene_sub->get_active_scene());
+        }
+        update(dt);
+    }
+}
+
+void AudioEngine::shutdown(core::EngineContext& context) {
+    context.unregister_service<AudioEngine>();
+    shutdown();
 }
 
 } // namespace engine::audio
