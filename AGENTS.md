@@ -52,3 +52,16 @@ These rules are mandatory constraints for all AI agents and developers working o
 
 * If any requirement, shader layout, or architectural boundary is ambiguous or underspecified:
   - **HALT IMMEDIATELY and ask the user for clarification before writing code.**
+
+---
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs are tracked locally as markdown files in `.scratch/`. See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context (`CONTEXT.md` + `docs/adr/` at root). See `docs/agents/domain.md`.
+

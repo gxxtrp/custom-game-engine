@@ -1,17 +1,17 @@
 # Architecture & System Design
 
-The **Modern Game Engine** is architected as a modular, high-throughput runtime library compiled as static libraries (`engine_core.lib`, `engine_rhi.lib`, `engine_renderer.lib`, ..., unified as `engine_master.lib`) consumed by applications such as `sandbox.exe` and `editor.exe`.
+The **Modern Game Engine** is architected as a modular, high-throughput runtime library compiled as static libraries (`engine_core.lib`, `engine_rhi.lib`, `engine_renderer.lib`, ..., unified as `engine_master.lib`) consumed by the standalone client runtime (`runtime.exe`).
 
 ---
 
 ## 1. High-Level Dependency Graph (DAG)
 
-The engine follows a strict acyclic dependency flow to prevent circular linkage and ensure deterministic initialization/shutdown:
+The engine strictly enforces a Directed Acyclic Graph (DAG) flow to prevent circular linkage and guarantee deterministic initialization and reverse-order shutdown:
 
 ```mermaid
 graph TD
-    subgraph Foundation Layer
-        Core[engine/core<br/>SIMD Math, Allocators, Platform]
+    subgraph Foundation & Core Services
+        Core[engine/core<br/>EngineKernel, EngineContext, Reflection, Math, Platform]
     end
 
     subgraph Infrastructure Layer
@@ -26,23 +26,23 @@ graph TD
         Assets[engine/assets<br/>UUID AssetManager]
         Project[engine/project<br/>Project Manifest]
         Importer[engine/importer<br/>cgltf glTF 2.0 Loader]
-        Scene[engine/scene<br/>Flecs ECS & Hierarchy]
+        Scene[engine/scene<br/>Flecs ECS & MapSerializer]
     end
 
     subgraph Hardware & Rendering Layer
-        RHI[engine/rhi<br/>Vulkan 1.3, Dynamic Rendering, 16K Bindless]
+        RHI[engine/rhi<br/>Vulkan 1.3 RHI & Viewport Presenters]
         Renderer[engine/renderer<br/>RenderGraph, Meshlets, Froxel Lighting, TAA]
     end
 
-    subgraph Simulation & Logic Layer
+    subgraph Simulation Layer
         Physics[engine/physics<br/>Jolt Physics 3D]
         Audio[engine/audio<br/>miniaudio 3D Spatial]
         Scripting[engine/scripting<br/>Lua 5.4 / Sol2]
     end
 
-    subgraph Presentation & Editor Layer
-        UI[engine/ui<br/>ImGui Docking, ImGuizmo, EditorCamera]
-        Master[engine_master / Engine<br/>Unified Master Orchestrator]
+    subgraph Presentation & Client Layer
+        Master[engine_master / Engine<br/>Kernel Orchestrator]
+        Runtime[runtime.exe<br/>Standalone Game Player]
     end
 
     Core --> Jobs
@@ -67,34 +67,43 @@ graph TD
     Scene --> Audio
     Scene --> Scripting
 
-    RHI --> UI
-    Scene --> UI
-    Physics --> UI
-
     Renderer --> Master
     Physics --> Master
     Audio --> Master
     Scripting --> Master
-    UI --> Master
+
+    Master --> Runtime
 ```
 
 ---
 
-## 2. Core Architectural Principles
+## 2. Core Architectural Subsystem Seams
 
-### 2.1. Data-Oriented Design (DOD) & Archetype ECS
-* **Flecs 4.1.6**: Entities are lightweight numeric IDs. Components are packed in cache-dense contiguous archetype tables.
-* **Component Synchronization**: Systems iterate over component arrays using SIMD instruction sets, avoiding pointer-chasing and cache misses.
+### 2.1. Declarative Subsystem Kernel (`EngineKernel`)
+* Subsystems implement the `ISubsystem` interface and declare their dependencies via `SubsystemDependencyBuilder` (e.g. `requires<RhiSubsystem>()`).
+* `EngineKernel` uses Kahn's algorithm for topological sorting to guarantee that subsystems initialize in exact dependency order and shut down in reverse order.
+* Frames are orchestrated across 5 deterministic execution phases:
+  1. `ExecutionPhase::PreTick`: Platform events, window messaging, and input polling.
+  2. `ExecutionPhase::Simulation`: Fixed-timestep physics simulation, Flecs scene simulation (`flecs::world::progress`), and Lua controller updates.
+  3. `ExecutionPhase::PostSimulation`: Hierarchy propagation, audio emitter synchronization, and camera/frustum extraction.
+  4. `ExecutionPhase::Render`: Scene extraction, RenderGraph pass scheduling, and GPU command buffer recording.
+  5. `ExecutionPhase::Present`: Frame submission to `IViewportPresenter` and GPU fence synchronization.
 
-### 2.2. Modern Vulkan 1.3 RHI & GPU-Driven Rendering
-* **Vulkan 1.3 Dynamic Rendering (`VK_KHR_dynamic_rendering`)**: No legacy `VkRenderPass` or `VkFramebuffer` boilerplate. Color and depth attachments are declared dynamically per-pass.
-* **Synchronization2 (`VK_KHR_synchronization2`)**: Explicit pipeline barriers, layout transitions, and stage masks.
-* **Bindless Resource Architecture**: A unified descriptor heap (`16,384` sampled images, `16,384` storage buffers, `256` samplers) accessed via 64-bit GPU buffer device addresses (BDA) and bindless texture IDs.
-* **Directed Acyclic Graph (DAG) RenderGraph**: Passes register read/write resource dependencies. The RenderGraph automatically computes optimal barrier placement and memory aliasing before recording command buffers.
+### 2.2. Viewport Presentation Seam (`IViewportPresenter`)
+* Decouples the engine frame loop from physical OS desktop windows.
+* **`WindowSwapchainPresenter`**: Manages SDL3 window handles and Vulkan swapchain presentation for standalone gameplay.
+* **`HeadlessPresenter`**: Skips window and swapchain creation, enabling deterministic simulation tests in headless CI/CD pipelines.
 
-### 2.3. Multi-Threading & Work-Stealing Job System
-* Engine tasks (mesh loading, texture decoding, culling, animation, sound streaming) are split into atomic jobs distributed across an $N$-thread worker pool with thread-local work-stealing ring buffers.
+### 2.3. Universal Compile-Time Reflection (`TypeRegistry`)
+* Lightweight macro-driven metadata registry (`REFLECT_STRUCT_BEGIN`, `REFLECT_FIELD`, `REFLECT_STRUCT_END`).
+* `MapSerializer` acts as a generic TOML schema visitor, automatically reading and writing all reflected fields to eliminate manual per-component serialization boilerplate and prevent data loss.
 
-### 2.4. Memory Safety & Leak Detection
-* Custom linear, stack, pool, and global heap allocators with 16-byte SIMD alignment and allocation tracking.
-* `GlobalAllocator::instance().dump_leaks()` verifies complete deallocation on shutdown.
+### 2.4. Data-Oriented Design (DOD) & Archetype ECS
+* **Flecs 4.1.6**: Entities are lightweight numeric IDs. Components are packed in contiguous archetype tables.
+* Systems iterate over contiguous component arrays, maximizing CPU L1/L2 cache locality.
+
+### 2.5. Modern Vulkan 1.3 RHI & GPU-Driven Rendering
+* **Vulkan 1.3 Dynamic Rendering (`VK_KHR_dynamic_rendering`)**: No legacy `VkRenderPass` or `VkFramebuffer` objects.
+* **Synchronization2 (`VK_KHR_synchronization2`)**: Explicit pipeline barriers, layout transitions, and 64-bit stage masks.
+* **Bindless Resource Architecture**: A unified descriptor heap (`16,384` sampled images, `16,384` storage buffers, `256` samplers) accessed via bindless resource indices.
+* **Directed Acyclic Graph (DAG) RenderGraph**: Passes register read/write dependencies; the graph calculates barrier transitions and transient memory aliasing.

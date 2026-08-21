@@ -1,10 +1,14 @@
 # Runtime Subsystems Specification
 
-This document provides technical details for every runtime subsystem in the engine.
+This document provides technical specifications for every runtime subsystem in the engine.
 
 ---
 
-## 1. Engine Core & Foundation (`engine/core`)
+## 1. Engine Core & Kernel (`engine/core`)
+* **`EngineKernel`**: Central subsystem DAG orchestrator using Kahn's topological sort for initialization and reverse-order shutdown.
+* **`ISubsystem`**: Common subsystem lifecycle interface with phase-based execution (`PreTick`, `Simulation`, `PostSimulation`, `Render`, `Present`).
+* **`EngineContext`**: Thread-safe service locator passed across subsystem lifecycles.
+* **`TypeRegistry`**: Compile-time reflection metadata registry (`REFLECT_STRUCT_BEGIN`, `REFLECT_FIELD`) driving dynamic TOML serialization and script bindings.
 * **SIMD Math**: Custom math library (`Vec2`, `Vec3`, `Vec4`, `Mat4`, `Quat`, `Ray`, `Plane`, `Frustum`, `AABB`) with SSE4.2/AVX2 intrinsics. Implements matrix decomposition, Shepperd's quaternion extraction, and right-handed Vulkan projection.
 * **Allocators**:
   * `LinearAllocator`: Ultra-fast bump allocator for transient per-frame allocations.
@@ -34,8 +38,8 @@ This document provides technical details for every runtime subsystem in the engi
 ---
 
 ## 5. Virtual File System & PAK Archives (`engine/vfs`)
-* Priority-based virtual mount router (`/assets`, `/config`, `/maps`).
-* `PhysicalMountPoint`: Reads and writes directly from OS disk directories.
+* Priority-based virtual mount router (`/assets`, `/config`, `/maps`, `/scripts`).
+* `PhysicalMountPoint`: Reads and writes directly from OS disk directories for development hot-reloading.
 * `PakArchiveMountPoint`: Encapsulates packed binary `.pak` files with header tables, TOC offsets, and zero-allocation streaming.
 
 ---
@@ -54,22 +58,24 @@ This document provides technical details for every runtime subsystem in the engi
 
 ---
 
-## 7. Flecs ECS Scene System (`engine/scene`)
+## 7. Flecs ECS Scene System & Persistence (`engine/scene`)
 * Archetype-based entity-component-system (Flecs 4.1.6).
-* Core components: `TagComponent`, `UUIDComponent`, `TransformComponent`, `WorldTransformComponent`, `CameraComponent`.
+* Core components: `TagComponent`, `UUIDComponent`, `TransformComponent`, `WorldTransformComponent`, `CameraComponent`, `MaterialComponent`.
 * Hierarchy propagation: Parent-child relationship tracking with automated world matrix evaluation.
-* Map Serializer: TOML level save/load mechanism.
+* **`MapSerializer`**: Schema-driven TOML serializer/deserializer powered by `TypeRegistry`, guaranteeing 100% component persistence without manual per-field parsing.
 
 ---
 
-## 8. Vulkan 1.3 RHI & Bindless Heap (`engine/rhi`)
+## 8. Vulkan 1.3 RHI & Viewport Presentation (`engine/rhi`)
 * **Instance & Device**: Vulkan 1.3 core API with dynamic rendering, synchronization2, buffer device address (BDA), maintenance4, and descriptor indexing.
 * **VMA Integration**: Fast GPU memory allocation for buffers (`VkBuffer`) and images (`VkImage`).
 * **Bindless Descriptor Heap**:
   * `16,384` Combined Image Samplers (`set = 0, binding = 0`)
   * `16,384` Storage Buffers (`set = 0, binding = 1`)
   * `256` Immutable Samplers (`set = 0, binding = 2`)
-* **Swapchain**: Triple-buffered mailbox/FIFO swapchain with automatic recreation on resize.
+* **`IViewportPresenter` Seam**:
+  * `WindowSwapchainPresenter`: Triple-buffered mailbox/FIFO swapchain for standalone desktop window output.
+  * `HeadlessPresenter`: Non-windowed presentation for automated CI/CD simulation tests.
 
 ---
 
@@ -87,6 +93,7 @@ This document provides technical details for every runtime subsystem in the engi
   * Temporal Anti-Aliasing (TAA): 16-phase Halton(2,3) subpixel jitter with YCoCg neighborhood bounding-box clamping.
   * HDR Bloom: 6-stage downsample/upsample mip chain with 13-tap tent filter and Karis luma weighting.
   * Auto-Exposure: 256-bin log-luminance histogram with exponential eye adaptation.
+* **`IRenderPassExtension`**: Extensible pass injection hook allowing custom feature passes (gizmos, picking, custom post-FX) to bind to RenderGraph phases.
 
 ---
 
@@ -111,17 +118,3 @@ This document provides technical details for every runtime subsystem in the engi
 * Embedded Lua 5.4 engine with `Sol2` high-speed C++ bindings.
 * Full access to SIMD math (`Vec2`, `Vec3`, `Vec4`, `Quat`), Logging, Input, Audio, Physics, and Flecs Entities.
 * Prototype metatable dispatch (`__index`) executing `on_init(self, entity)` and `on_update(self, entity, dt)`.
-
----
-
-## 13. Editor UI & Gizmo Subsystem (`engine/ui`)
-* ImGui 1.92+ docking layout with custom obsidian/slate dark theme.
-* Native Vulkan 1.3 Dynamic Rendering ImGui backend (zero renderpass legacy objects).
-* Panels:
-  * **Scene Hierarchy Panel**: Live Flecs entity tree with safe deferred deletion.
-  * **Entity Inspector Panel**: Dynamic component inspector for Transform, Physics, Audio, and Script fields.
-  * **Content Browser Panel**: Interactive VFS file explorer.
-  * **Profiler & Console Panel**: Live rolling FPS chart, hardware specs, and heap memory usage.
-* **EditorCamera**: Orbit, pan, dolly, and FPS flycam controls.
-* **ImGuizmo 3D Manipulator**: Translate, Rotate, Scale in World/Local space with grid snapping.
-* **Viewport Mouse Picking**: Screen-to-world unprojected raycast entity selection.
