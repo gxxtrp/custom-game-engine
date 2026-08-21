@@ -13,7 +13,6 @@ add_subdirectory(renderer)
 add_subdirectory(physics)
 add_subdirectory(audio)
 add_subdirectory(scripting)
-add_subdirectory(ui)
 
 add_library(engine_master STATIC
     include/engine/engine.h
@@ -41,7 +40,6 @@ target_link_libraries(engine_master PUBLIC
     engine_physics
     engine_audio
     engine_scripting
-    engine_ui
 )
 
 engine_target_compile_options(engine_master)

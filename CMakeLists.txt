@@ -11,6 +11,4 @@ include(Platforms)
 
 add_subdirectory(engine)
 add_subdirectory(tools)
-add_subdirectory(sandbox)
-add_subdirectory(editor)
 add_subdirectory(runtime)

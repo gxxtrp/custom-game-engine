@@ -1,14 +1,14 @@
 # Architecture, Isolation & Production Rules
 
 ## Strict Module Isolation & DAG
-1. `engine/` is the core library. It MUST NEVER reference or depend on `editor/`, `runtime/`, or `sandbox/`.
-2. `editor/` and `runtime/` are standalone applications that depend on `engine/`, but NEVER on each other.
+1. `engine/` is the core library. It is 100% headless, UI-agnostic, and isolated.
+2. `runtime/` is the standalone game player consuming `engine_master`.
 3. Modules within `engine/` have strict acyclic DAG dependencies: `engine_core` -> `engine_rhi` / `engine_scene` -> `engine_renderer` -> `engine_master`.
 4. NO circular dependencies between any modules.
 
 ## Dynamic Project Agnosticism
 1. Game projects are completely decoupled and can reside anywhere on the filesystem.
-2. NEVER hardcode project paths (e.g. `sandbox_project`, `projects/ActionDemo`) in engine, editor, or runtime code.
+2. NEVER hardcode project paths in engine or runtime code.
 3. Projects are provided dynamically via `--project <path>` or `project.toml`.
 4. All asset lookups route through dynamic VFS mounts (`/assets`, `/maps`, `/config`).
 

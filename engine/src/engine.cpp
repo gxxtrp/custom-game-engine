@@ -82,9 +82,16 @@ bool Engine::init(const EngineDesc& desc) {
         m_render_finished_semaphores[i].init(false);
     }
 
-    // 6. Graphics Pipelines
-    m_vert_shader.init_from_spirv(shaders::TRIANGLE_VERT_SPV, shaders::TRIANGLE_VERT_SPV_SIZE, rhi::ShaderStage::Vertex);
-    m_frag_shader.init_from_spirv(shaders::TRIANGLE_FRAG_SPV, shaders::TRIANGLE_FRAG_SPV_SIZE, rhi::ShaderStage::Fragment);
+    // 6. Graphics Pipeline
+    if (!m_vert_shader.init_from_spirv(shaders::TRIANGLE_VERT_SPV, shaders::TRIANGLE_VERT_SPV_SIZE, rhi::ShaderStage::Vertex)) {
+        LOG_FATAL("Engine", "Failed to create triangle vertex shader module!");
+        return false;
+    }
+
+    if (!m_frag_shader.init_from_spirv(shaders::TRIANGLE_FRAG_SPV, shaders::TRIANGLE_FRAG_SPV_SIZE, rhi::ShaderStage::Fragment)) {
+        LOG_FATAL("Engine", "Failed to create triangle fragment shader module!");
+        return false;
+    }
 
     rhi::GraphicsPipelineDesc pipeline_desc{};
     pipeline_desc.vertex_shader = &m_vert_shader;
@@ -97,15 +104,7 @@ bool Engine::init(const EngineDesc& desc) {
         return false;
     }
 
-    // 7. Editor UI
-    if (desc.enable_editor_ui) {
-        if (!ui::EditorUI::instance().init(m_window, static_cast<rhi::Format>(m_swapchain.get_format()))) {
-            LOG_FATAL("Engine", "Failed to initialize Editor UI!");
-            return false;
-        }
-    }
-
-    // 8. Register Scene Subsystems
+    // 7. Register Scene Subsystems
     physics::PhysicsSystem::instance().register_scene(m_active_scene);
     audio::AudioEngine::instance().register_scene(m_active_scene);
     scripting::ScriptEngine::instance().register_scene(m_active_scene);
@@ -158,14 +157,7 @@ void Engine::step() {
         scripting::ScriptEngine::instance().sync_ecs_scripts(m_active_scene, dt);
     }
 
-    // 3. ImGui Editor UI Frame
-    if (m_desc.enable_editor_ui) {
-        ui::EditorUI::instance().begin_frame();
-        ui::EditorUI::instance().render_panels(m_active_scene, dt, m_timer.fps());
-        ui::EditorUI::instance().end_frame();
-    }
-
-    // 4. Acquire Next Swapchain Image
+    // 3. Acquire Next Swapchain Image
     m_in_flight_fences[m_current_frame].wait();
 
     uint32_t image_index = 0;
@@ -182,7 +174,7 @@ void Engine::step() {
 
     m_in_flight_fences[m_current_frame].reset();
 
-    // 5. Compile & Record DAG Render Graph
+    // 4. Build Frame RenderGraph
     m_render_graph.reset();
 
     renderer::RGTextureHandle swapchain_rg = m_render_graph.import_texture(
@@ -195,19 +187,19 @@ void Engine::step() {
         VK_IMAGE_LAYOUT_UNDEFINED
     );
 
-    // Pass 1: Scene Render Pass
+    // Pass 1: Scene Graphics Pass
     m_render_graph.add_pass(
-        "SceneForwardPass",
+        "ScenePass",
         [&](renderer::RenderPassBuilder& builder) {
             builder.set_color_attachment(
-                0, 
-                swapchain_rg, 
-                VK_ATTACHMENT_LOAD_OP_CLEAR, 
-                VK_ATTACHMENT_STORE_OP_STORE, 
-                core::Vec4(0.03f, 0.05f, 0.08f, 1.0f)
+                0,
+                swapchain_rg,
+                VK_ATTACHMENT_LOAD_OP_CLEAR,
+                VK_ATTACHMENT_STORE_OP_STORE,
+                core::Vec4(0.08f, 0.09f, 0.11f, 1.0f)
             );
         },
-        [&](renderer::RenderPassContext& ctx) {
+        [this](renderer::RenderPassContext& ctx) {
             auto& cmd = ctx.get_command_buffer();
             cmd.set_viewport(rhi::Viewport{
                 .x = 0.0f,
@@ -228,26 +220,7 @@ void Engine::step() {
         }
     );
 
-    // Pass 2: Editor UI Pass
-    if (m_desc.enable_editor_ui) {
-        m_render_graph.add_pass(
-            "EditorUIPass",
-            [&](renderer::RenderPassBuilder& builder) {
-                builder.set_color_attachment(
-                    0,
-                    swapchain_rg,
-                    VK_ATTACHMENT_LOAD_OP_LOAD,
-                    VK_ATTACHMENT_STORE_OP_STORE
-                );
-            },
-            [](renderer::RenderPassContext& ctx) {
-                auto& cmd = ctx.get_command_buffer();
-                ui::EditorUI::instance().render(cmd.get_handle());
-            }
-        );
-    }
-
-    // Pass 3: Present Transition Pass
+    // Pass 2: Present Transition Pass
     m_render_graph.add_pass(
         "PresentTransitionPass",
         [&](renderer::RenderPassBuilder& builder) {
@@ -266,7 +239,7 @@ void Engine::step() {
 
     cmd.end();
 
-    // 6. Submit Command Buffer
+    // 5. Submit Command Buffer
     VkSubmitInfo submit_info{};
     submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
@@ -286,7 +259,7 @@ void Engine::step() {
 
     vkQueueSubmit(rhi::RhiContext::instance().get_graphics_queue(), 1, &submit_info, m_in_flight_fences[m_current_frame].get_handle());
 
-    // 7. Present Swapchain Image
+    // 6. Present Swapchain Image
     VkResult present_res = m_swapchain.present(
         rhi::RhiContext::instance().get_graphics_queue(),
         m_render_finished_semaphores[image_index].get_handle(),
@@ -325,10 +298,6 @@ void Engine::shutdown() {
     m_scene_pipeline.destroy();
     m_vert_shader.destroy();
     m_frag_shader.destroy();
-
-    if (m_desc.enable_editor_ui) {
-        ui::EditorUI::instance().shutdown();
-    }
 
     for (auto& sem : m_render_finished_semaphores) {
         sem.destroy();

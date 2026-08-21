@@ -51,9 +51,6 @@
 #include "engine/scripting/script_types.h"
 #include "engine/scripting/script_components.h"
 #include "engine/scripting/script_engine.h"
-#include "engine/ui/editor_ui.h"
-#include "engine/ui/editor_camera.h"
-#include "engine/ui/panels/viewport_panel.h"
 
 namespace engine {
 
@@ -63,7 +60,6 @@ struct EngineDesc {
     uint32_t height{720};
     bool enable_vsync{true};
     bool enable_validation{true};
-    bool enable_editor_ui{true};
     std::string project_manifest_path{""};
 };
 
