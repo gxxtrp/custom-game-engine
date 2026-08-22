@@ -2,7 +2,12 @@ add_library(engine_renderer STATIC
     include/engine/renderer/render_graph_types.h
     include/engine/renderer/render_pass.h
     include/engine/renderer/render_graph.h
+    include/engine/renderer/render_stage.h
+    include/engine/renderer/render_feature.h
+    include/engine/renderer/camera.h
     include/engine/renderer/mesh.h
+    include/engine/renderer/mesh_resolver.h
+    include/engine/renderer/scene_mesh_iterator.h
     include/engine/renderer/material.h
     include/engine/renderer/gpu_scene.h
     include/engine/renderer/lighting.h
@@ -15,9 +20,21 @@ add_library(engine_renderer STATIC
     include/engine/renderer/bloom.h
     include/engine/renderer/auto_exposure.h
     include/engine/renderer/scene_renderer.h
+    include/engine/renderer/depth_pre_pass_feature.h
+    include/engine/renderer/forward_opaque_feature.h
+    include/engine/renderer/cascaded_shadow_feature.h
+    include/engine/renderer/clustered_lighting_feature.h
+    include/engine/renderer/volumetrics_feature.h
+    include/engine/renderer/oit_feature.h
+    include/engine/renderer/auto_exposure_feature.h
+    include/engine/renderer/taa_feature.h
+    include/engine/renderer/bloom_feature.h
+    include/engine/renderer/post_process_feature.h
     src/render_pass.cpp
     src/render_graph.cpp
+    src/camera.cpp
     src/mesh.cpp
+    src/mesh_resolver.cpp
     src/material.cpp
     src/gpu_scene.cpp
     src/lighting.cpp
@@ -30,6 +47,16 @@ add_library(engine_renderer STATIC
     src/bloom.cpp
     src/auto_exposure.cpp
     src/scene_renderer.cpp
+    src/depth_pre_pass_feature.cpp
+    src/forward_opaque_feature.cpp
+    src/cascaded_shadow_feature.cpp
+    src/clustered_lighting_feature.cpp
+    src/volumetrics_feature.cpp
+    src/oit_feature.cpp
+    src/auto_exposure_feature.cpp
+    src/taa_feature.cpp
+    src/bloom_feature.cpp
+    src/post_process_feature.cpp
 )
 
 target_include_directories(engine_renderer PUBLIC
@@ -66,6 +93,18 @@ if(DXC_EXECUTABLE)
         "Tonemap.hlsl:PSMain:ps_6_6:tonemap_frag.spv:TONEMAP_FRAG_SPV"
         "Triangle.hlsl:VSMain:vs_6_6:triangle_vert.spv:TRIANGLE_VERT_SPV"
         "Triangle.hlsl:PSMain:ps_6_6:triangle_frag.spv:TRIANGLE_FRAG_SPV"
+        "DepthPrepass.hlsl:VSMain:vs_6_6:depth_prepass_vert.spv:DEPTH_PREPASS_VERT_SPV"
+        "DepthPrepass.hlsl:PSMain:ps_6_6:depth_prepass_frag.spv:DEPTH_PREPASS_FRAG_SPV"
+        "Wboit.hlsl:VSMain:vs_6_6:wboit_vert.spv:WBOIT_VERT_SPV"
+        "Wboit.hlsl:PSMain:ps_6_6:wboit_accum_frag.spv:WBOIT_ACCUM_FRAG_SPV"
+        "AutoExposure.hlsl:main:cs_6_6:auto_exposure_comp.spv:AUTO_EXPOSURE_COMP_SPV"
+        "Taa.hlsl:PSMain:ps_6_6:taa_resolve_frag.spv:TAA_RESOLVE_FRAG_SPV"
+        "OitResolve.hlsl:PSMain:ps_6_6:oit_resolve_frag.spv:OIT_RESOLVE_FRAG_SPV"
+        "Bloom.hlsl:BloomPrefilterPS:ps_6_6:bloom_prefilter_frag.spv:BLOOM_PREFILTER_FRAG_SPV"
+        "Bloom.hlsl:BloomDownsamplePS:ps_6_6:bloom_downsample_frag.spv:BLOOM_DOWNSAMPLE_FRAG_SPV"
+        "Bloom.hlsl:BloomUpsamplePS:ps_6_6:bloom_upsample_frag.spv:BLOOM_UPSAMPLE_FRAG_SPV"
+        "VolumetricFog.hlsl:PSMain:ps_6_6:volumetric_fog_frag.spv:VOLUMETRIC_FOG_FRAG_SPV"
+        "Composite.hlsl:PSMain:ps_6_6:composite_frag.spv:COMPOSITE_FRAG_SPV"
     )
 
     set(GENERATED_SPV_HEADERS "")
@@ -83,7 +122,7 @@ if(DXC_EXECUTABLE)
         add_custom_command(
             OUTPUT "${OUT_PATH}"
             COMMAND ${DXC_EXECUTABLE} -spirv -T ${S_STAGE} -E ${S_ENTRY} "-fspv-target-env=vulkan1.3" -fspv-entrypoint-name=main -HV 2021 "${IN_PATH}" -Fh "${OUT_PATH}" -Vn ${S_SYM}
-            DEPENDS "${IN_PATH}"
+            DEPENDS "${IN_PATH}" "${HLSL_SHADER_DIR}/frame_uniforms.hlsli"
             COMMENT "Compiling HLSL shader ${S_FILE} (${S_ENTRY}:${S_STAGE}) -> ${S_OUT}"
             VERBATIM
         )

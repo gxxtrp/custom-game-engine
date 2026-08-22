@@ -61,12 +61,19 @@ public:
     uint32_t get_height() const { return m_desc.height; }
     Format get_format() const { return m_desc.format; }
 
+    // Creates (and caches) a single-array-layer image view. Required for rendering
+    // individual cascade slices of a Texture2DArray attachment (e.g. CSM).
+    VkImageView get_or_create_layer_view(uint32_t array_layer) const;
+
     bool is_valid() const { return m_image != VK_NULL_HANDLE; }
 
 private:
     TextureDesc m_desc{};
     VkImage m_image{VK_NULL_HANDLE};
     VkImageView m_image_view{VK_NULL_HANDLE};
+    mutable VkImageView m_array_layer_views[8]{};
+    mutable uint32_t m_array_layer_indices[8]{};
+    mutable uint32_t m_array_layer_view_count{0};
     VmaAllocation m_allocation{VK_NULL_HANDLE};
     VmaAllocationInfo m_alloc_info{};
 };

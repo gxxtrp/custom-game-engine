@@ -93,19 +93,22 @@ static VkImageLayout get_required_layout(RGResourceAccess access, rhi::Format fo
 }
 
 bool RenderGraph::compile() {
-    // 1. Allocate / reuse physical resources for transient textures from pool
-    size_t pool_tex_idx = 0;
+    // 1. Allocate / reuse physical resources for transient textures from pool.
+    //    Matching is by debug name: each logical resource has a unique, stable
+    //    name across frames, so a pool hit maps to the SAME logical resource
+    //    from a previous frame. Name-based matching guarantees non-overlapping
+    //    lifetimes (matching by size/format alone aliased concurrently-live
+    //    textures, e.g. SceneColorComposite and SceneColorTAA).
     for (auto& res : m_textures) {
         if (!res.is_external && !res.physical_texture) {
             if (res.desc.width == 0 || res.desc.height == 0) {
                 continue;
             }
 
-            // Find existing matching texture in pool
             bool found = false;
-            while (pool_tex_idx < m_texture_pool.size()) {
-                const auto& pooled = m_texture_pool[pool_tex_idx++];
-                if (pooled->get_desc().width == res.desc.width &&
+            for (const auto& pooled : m_texture_pool) {
+                if (pooled->get_desc().debug_name == res.desc.debug_name &&
+                    pooled->get_desc().width == res.desc.width &&
                     pooled->get_desc().height == res.desc.height &&
                     pooled->get_desc().format == res.desc.format) {
                     res.physical_texture = pooled.get();
@@ -115,6 +118,12 @@ bool RenderGraph::compile() {
             }
 
             if (!found) {
+                // Drop a stale same-name entry (viewport resize) so the pool
+                // keeps exactly one physical texture per logical resource.
+                std::erase_if(m_texture_pool, [&](const std::unique_ptr<rhi::RhiTexture>& pooled) {
+                    return pooled->get_desc().debug_name == res.desc.debug_name;
+                });
+
                 rhi::TextureDesc tex_desc{};
                 tex_desc.width = res.desc.width;
                 tex_desc.height = res.desc.height;
@@ -177,35 +186,41 @@ void RenderGraph::execute(rhi::RhiCommandBuffer& cmd) {
         if (!compile()) return;
     }
 
-    for (const auto& node : m_pass_nodes) {
-        // 1. Image Layout Transitions for Reads
-        for (const auto& [handle, access] : node.reads) {
-            if (handle.type == RGResourceType::Texture && handle.id < m_textures.size()) {
-                auto& tex = m_textures[handle.id];
-                VkImageLayout target_layout = get_required_layout(access, tex.desc.format);
-                if (target_layout != VK_IMAGE_LAYOUT_UNDEFINED && tex.current_layout != target_layout) {
-                    VkImage img = get_texture_image(RGTextureHandle(handle.id, handle.version));
-                    VkImageAspectFlags aspect = (tex.desc.format == rhi::Format::D32_SFLOAT || tex.desc.format == rhi::Format::D24_UNORM_S8_UINT) 
-                        ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+    // CPU-only execution mode: when the command buffer has no backing Vulkan
+    // handle (tests/tools with a default-constructed buffer), skip every GPU
+    // operation but still run the pass callbacks so feature logic executes.
+    const bool gpu_available = cmd.get_handle() != VK_NULL_HANDLE;
 
-                    cmd.transition_image_layout(img, tex.current_layout, target_layout, aspect);
-                    tex.current_layout = target_layout;
+    for (const auto& node : m_pass_nodes) {
+        if (gpu_available) {
+            for (const auto& [handle, access] : node.reads) {
+                if (handle.type == RGResourceType::Texture && handle.id < m_textures.size()) {
+                    auto& tex = m_textures[handle.id];
+                    VkImageLayout target_layout = get_required_layout(access, tex.desc.format);
+                    if (target_layout != VK_IMAGE_LAYOUT_UNDEFINED && tex.current_layout != target_layout) {
+                        VkImage img = get_texture_image(RGTextureHandle(handle.id, handle.version));
+                        VkImageAspectFlags aspect = (tex.desc.format == rhi::Format::D32_SFLOAT || tex.desc.format == rhi::Format::D24_UNORM_S8_UINT) 
+                            ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+
+                        cmd.transition_image_layout(img, tex.current_layout, target_layout, aspect);
+                        tex.current_layout = target_layout;
+                    }
                 }
             }
-        }
 
-        // 2. Image Layout Transitions for Writes
-        for (const auto& [handle, access] : node.writes) {
-            if (handle.type == RGResourceType::Texture && handle.id < m_textures.size()) {
-                auto& tex = m_textures[handle.id];
-                VkImageLayout target_layout = get_required_layout(access, tex.desc.format);
-                if (target_layout != VK_IMAGE_LAYOUT_UNDEFINED && tex.current_layout != target_layout) {
-                    VkImage img = get_texture_image(RGTextureHandle(handle.id, handle.version));
-                    VkImageAspectFlags aspect = (tex.desc.format == rhi::Format::D32_SFLOAT || tex.desc.format == rhi::Format::D24_UNORM_S8_UINT) 
-                        ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+            // 2. Image Layout Transitions for Writes
+            for (const auto& [handle, access] : node.writes) {
+                if (handle.type == RGResourceType::Texture && handle.id < m_textures.size()) {
+                    auto& tex = m_textures[handle.id];
+                    VkImageLayout target_layout = get_required_layout(access, tex.desc.format);
+                    if (target_layout != VK_IMAGE_LAYOUT_UNDEFINED && tex.current_layout != target_layout) {
+                        VkImage img = get_texture_image(RGTextureHandle(handle.id, handle.version));
+                        VkImageAspectFlags aspect = (tex.desc.format == rhi::Format::D32_SFLOAT || tex.desc.format == rhi::Format::D24_UNORM_S8_UINT) 
+                            ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
 
-                    cmd.transition_image_layout(img, tex.current_layout, target_layout, aspect);
-                    tex.current_layout = target_layout;
+                        cmd.transition_image_layout(img, tex.current_layout, target_layout, aspect);
+                        tex.current_layout = target_layout;
+                    }
                 }
             }
         }
@@ -214,7 +229,7 @@ void RenderGraph::execute(rhi::RhiCommandBuffer& cmd) {
         bool is_raster_pass = !node.color_attachments.empty() || node.has_depth_attachment;
         rhi::Rect2D render_area{};
 
-        if (is_raster_pass) {
+        if (gpu_available && is_raster_pass) {
             rhi::RenderingDesc render_desc{};
 
             for (const auto& att : node.color_attachments) {
@@ -260,7 +275,7 @@ void RenderGraph::execute(rhi::RhiCommandBuffer& cmd) {
         }
 
         // 5. End Dynamic Rendering
-        if (is_raster_pass) {
+        if (gpu_available && is_raster_pass) {
             cmd.end_rendering();
         }
     }

@@ -95,6 +95,16 @@ bool RhiTexture::init(const TextureDesc& desc) {
 
 void RhiTexture::destroy() {
     VkDevice device = RhiContext::instance().get_device();
+    if (device != VK_NULL_HANDLE) {
+        for (uint32_t i = 0; i < m_array_layer_view_count; ++i) {
+            if (m_array_layer_views[i] != VK_NULL_HANDLE) {
+                vkDestroyImageView(device, m_array_layer_views[i], nullptr);
+                m_array_layer_views[i] = VK_NULL_HANDLE;
+            }
+        }
+    }
+    m_array_layer_view_count = 0;
+
     if (m_image_view != VK_NULL_HANDLE && device != VK_NULL_HANDLE) {
         vkDestroyImageView(device, m_image_view, nullptr);
         m_image_view = VK_NULL_HANDLE;
@@ -108,6 +118,44 @@ void RhiTexture::destroy() {
         m_image = VK_NULL_HANDLE;
         m_allocation = VK_NULL_HANDLE;
     }
+}
+
+VkImageView RhiTexture::get_or_create_layer_view(uint32_t array_layer) const {
+    if (array_layer >= m_desc.array_layers) return VK_NULL_HANDLE;
+
+    // Reuse an existing view when possible
+    for (uint32_t i = 0; i < m_array_layer_view_count; ++i) {
+        if (m_array_layer_views[i] != VK_NULL_HANDLE && m_array_layer_indices[i] == array_layer) {
+            return m_array_layer_views[i];
+        }
+    }
+    if (m_array_layer_view_count >= 8) return VK_NULL_HANDLE;
+
+    VkImageViewCreateInfo view_info{};
+    view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    view_info.image = m_image;
+    view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    view_info.format = static_cast<VkFormat>(m_desc.format);
+    view_info.subresourceRange.aspectMask =
+        (m_desc.format == Format::D32_SFLOAT || m_desc.format == Format::D24_UNORM_S8_UINT)
+            ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+    view_info.subresourceRange.baseMipLevel = 0;
+    view_info.subresourceRange.levelCount = 1;
+    view_info.subresourceRange.baseArrayLayer = array_layer;
+    view_info.subresourceRange.layerCount = 1;
+
+    VkImageView view = VK_NULL_HANDLE;
+    VkDevice device = RhiContext::instance().get_device();
+    VkResult res = vkCreateImageView(device, &view_info, nullptr, &view);
+    if (res != VK_SUCCESS) {
+        LOG_ERROR("RHI", "Failed to create layer {} view for '{}': {}", array_layer, m_desc.debug_name, static_cast<int>(res));
+        return VK_NULL_HANDLE;
+    }
+
+    m_array_layer_views[m_array_layer_view_count] = view;
+    m_array_layer_indices[m_array_layer_view_count] = array_layer;
+    m_array_layer_view_count++;
+    return view;
 }
 
 RhiSampler::~RhiSampler() {

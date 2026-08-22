@@ -46,6 +46,19 @@ struct GraphicsPipelineDesc {
     VkCompareOp depth_compare_op{VK_COMPARE_OP_LESS_OR_EQUAL};
 
     bool blend_enable{false};
+    // Per-attachment blend overrides (e.g. WBOIT accumulation/revealage).
+    // When empty, `blend_enable` drives standard alpha blending on all attachments.
+    struct BlendState {
+        bool enable{false};
+        VkBlendFactor src_color{VK_BLEND_FACTOR_SRC_ALPHA};
+        VkBlendFactor dst_color{VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA};
+        VkBlendOp color_op{VK_BLEND_OP_ADD};
+        VkBlendFactor src_alpha{VK_BLEND_FACTOR_ONE};
+        VkBlendFactor dst_alpha{VK_BLEND_FACTOR_ZERO};
+        VkBlendOp alpha_op{VK_BLEND_OP_ADD};
+    };
+    std::vector<BlendState> blend_states;
+
     VkPipelineLayout layout{VK_NULL_HANDLE};
 };
 
@@ -64,6 +77,28 @@ private:
     VkPipeline m_pipeline{VK_NULL_HANDLE};
     VkPipelineLayout m_layout{VK_NULL_HANDLE};
     bool m_owns_layout{false};
+};
+
+struct ComputePipelineDesc {
+    RhiShaderModule* compute_shader{nullptr};
+    std::vector<VkDescriptorSetLayout> descriptor_set_layouts;
+    std::vector<VkPushConstantRange> push_constant_ranges;
+};
+
+class RhiComputePipeline {
+public:
+    RhiComputePipeline() = default;
+    ~RhiComputePipeline();
+
+    bool init(const ComputePipelineDesc& desc);
+    void destroy();
+
+    VkPipeline get_pipeline() const { return m_pipeline; }
+    VkPipelineLayout get_layout() const { return m_layout; }
+
+private:
+    VkPipeline m_pipeline{VK_NULL_HANDLE};
+    VkPipelineLayout m_layout{VK_NULL_HANDLE};
 };
 
 } // namespace engine::rhi

@@ -45,6 +45,10 @@ public:
                              VkAttachmentStoreOp store_op = VK_ATTACHMENT_STORE_OP_STORE, 
                              float clear_depth = 1.0f);
 
+    // Grants access to the owning graph so multi-pass features (e.g. bloom's
+    // down/upsample chain) can register their sub-passes during setup().
+    RenderGraph& get_graph() { return m_graph; }
+
 private:
     RenderGraph& m_graph;
     uint32_t m_pass_index;

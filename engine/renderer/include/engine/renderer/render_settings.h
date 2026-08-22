@@ -33,6 +33,9 @@ struct GraphicsSettings {
     float bloom_intensity{0.05f};
     bool enable_vignette{true};
     float vignette_intensity{0.25f};
+    bool enable_taa{true};
+    bool enable_auto_exposure{true};
+    bool enable_volumetric_fog{true};
 
     // 3. Optimization & Culling
     bool enable_frustum_culling{true};
@@ -47,6 +50,9 @@ struct GraphicsSettings {
                 shadow_pcf_soft = false;
                 enable_bloom = false;
                 enable_vignette = false;
+                enable_taa = false;
+                enable_auto_exposure = false;
+                enable_volumetric_fog = false;
                 enable_frustum_culling = true;
                 break;
             case QualityPreset::Medium:
@@ -56,6 +62,9 @@ struct GraphicsSettings {
                 shadow_pcf_soft = true;
                 enable_bloom = false;
                 enable_vignette = true;
+                enable_taa = true;
+                enable_auto_exposure = true;
+                enable_volumetric_fog = false;
                 enable_frustum_culling = true;
                 break;
             case QualityPreset::High:
@@ -65,6 +74,9 @@ struct GraphicsSettings {
                 shadow_pcf_soft = true;
                 enable_bloom = true;
                 enable_vignette = true;
+                enable_taa = true;
+                enable_auto_exposure = true;
+                enable_volumetric_fog = true;
                 enable_frustum_culling = true;
                 break;
             case QualityPreset::Ultra:
@@ -74,6 +86,9 @@ struct GraphicsSettings {
                 shadow_pcf_soft = true;
                 enable_bloom = true;
                 enable_vignette = true;
+                enable_taa = true;
+                enable_auto_exposure = true;
+                enable_volumetric_fog = true;
                 enable_frustum_culling = true;
                 break;
             case QualityPreset::Custom:

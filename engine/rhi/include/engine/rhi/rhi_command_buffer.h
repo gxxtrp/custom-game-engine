@@ -49,10 +49,16 @@ public:
     void bind_pipeline(VkPipeline pipeline, VkPipelineBindPoint bind_point = VK_PIPELINE_BIND_POINT_GRAPHICS);
     void bind_vertex_buffer(uint32_t binding, VkBuffer buffer, VkDeviceSize offset = 0);
     void bind_index_buffer(VkBuffer buffer, VkDeviceSize offset = 0, VkIndexType index_type = VK_INDEX_TYPE_UINT32);
+    void bind_descriptor_set(VkPipelineBindPoint bind_point, VkPipelineLayout layout, VkDescriptorSet set, uint32_t first_set = 0);
 
     void draw(uint32_t vertex_count, uint32_t instance_count = 1, uint32_t first_vertex = 0, uint32_t first_instance = 0);
     void draw_indexed(uint32_t index_count, uint32_t instance_count = 1, uint32_t first_index = 0, int32_t vertex_offset = 0, uint32_t first_instance = 0);
+    void dispatch(uint32_t group_count_x, uint32_t group_count_y = 1, uint32_t group_count_z = 1);
     void push_constants(VkPipelineLayout layout, VkShaderStageFlags stages, uint32_t offset, uint32_t size, const void* values);
+
+    // Transfer helpers
+    void copy_buffer(VkBuffer src, VkBuffer dst, VkDeviceSize size);
+    void fill_buffer(VkBuffer dst, VkDeviceSize size, uint32_t data = 0);
 
     VkCommandBuffer get_handle() const { return m_cmd; }
 

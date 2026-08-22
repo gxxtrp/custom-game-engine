@@ -97,6 +97,8 @@ struct MaterialComponent {
     assets::UUID albedo_texture_uuid;
     assets::UUID normal_texture_uuid;
     assets::UUID metallic_roughness_texture_uuid;
+    // 0 = Opaque, 1 = Masked, 2 = Transparent (OIT path)
+    uint32_t blend_mode{0};
 };
 
 } // namespace engine::scene
@@ -170,4 +172,5 @@ REFLECT_STRUCT_BEGIN(engine::scene::MaterialComponent)
     REFLECT_FIELD(albedo_texture_uuid, "Albedo Texture", "Albedo texture UUID")
     REFLECT_FIELD(normal_texture_uuid, "Normal Map", "Normal texture UUID")
     REFLECT_FIELD(metallic_roughness_texture_uuid, "Metallic Roughness Map", "Metallic/Roughness texture UUID")
+    REFLECT_FIELD(blend_mode, "Blend Mode", "0=Opaque, 1=Masked, 2=Transparent")
 REFLECT_STRUCT_END()

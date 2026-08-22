@@ -315,6 +315,7 @@ bool RhiContext::create_logical_device() {
     VkPhysicalDeviceFeatures2 device_features2{};
     device_features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
     device_features2.features.samplerAnisotropy = VK_TRUE;
+    device_features2.features.independentBlend = VK_TRUE; // per-attachment blend (WBOIT)
     device_features2.pNext = &features12;
 
     VkDeviceCreateInfo create_info{};

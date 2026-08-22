@@ -12,3 +12,6 @@ include(Platforms)
 add_subdirectory(engine)
 add_subdirectory(tools)
 add_subdirectory(runtime)
+
+enable_testing()
+add_subdirectory(tests)

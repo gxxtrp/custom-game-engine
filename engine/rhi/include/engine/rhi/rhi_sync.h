@@ -27,6 +27,21 @@ class RhiSemaphore {
 public:
     RhiSemaphore() = default;
     ~RhiSemaphore();
+    RhiSemaphore(const RhiSemaphore&) = delete;
+    RhiSemaphore& operator=(const RhiSemaphore&) = delete;
+    RhiSemaphore(RhiSemaphore&& other) noexcept
+        : m_semaphore(other.m_semaphore), m_is_timeline(other.m_is_timeline) {
+        other.m_semaphore = VK_NULL_HANDLE;
+    }
+    RhiSemaphore& operator=(RhiSemaphore&& other) noexcept {
+        if (this != &other) {
+            destroy();
+            m_semaphore = other.m_semaphore;
+            m_is_timeline = other.m_is_timeline;
+            other.m_semaphore = VK_NULL_HANDLE;
+        }
+        return *this;
+    }
 
     bool init(bool is_timeline = false, uint64_t initial_value = 0);
     void destroy();

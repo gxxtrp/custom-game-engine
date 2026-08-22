@@ -111,25 +111,24 @@ bool RuntimeApp::init(const RuntimeAppDesc& desc) {
             return false;
         }
 
-        m_cmd_pool.init(engine::rhi::RhiContext::instance().get_queue_families().graphics_family);
-
-        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-            m_cmd_buffers[i].init(m_cmd_pool.get_handle());
-            m_in_flight_fences[i].init(true);
-            m_image_available_semaphores[i].init(false);
-        }
-
-        uint32_t image_count = m_presenter->get_image_count();
-        m_render_finished_semaphores.resize(image_count);
-        for (size_t i = 0; i < image_count; ++i) {
-            m_render_finished_semaphores[i].init(false);
-        }
-
-        engine::rhi::Format sc_format = static_cast<engine::rhi::Format>(m_presenter->get_format());
-        if (!engine::renderer::SceneRenderer::instance().init(sc_format, engine::rhi::Format::R16G16B16A16_SFLOAT, engine::rhi::Format::D32_SFLOAT)) {
-            LOG_FATAL("Runtime", "Failed to initialize SceneRenderer!");
+        // Open pipeline host: SceneRenderer owns the feature registry, the
+        // internal RenderGraph, frame command buffer, fence, and semaphores.
+        m_scene_renderer = std::make_unique<engine::renderer::SceneRenderer>(&engine::rhi::RhiContext::instance());
+        if (!m_scene_renderer) {
+            LOG_FATAL("Runtime", "Failed to construct SceneRenderer!");
             return false;
         }
+
+        // Semaphore slots must cover the swapchain image count: with fewer slots
+        // than images, a burst of frames re-signals a render-finished semaphore
+        // before the swapchain retires the present waiting on it.
+        uint32_t image_count = m_presenter->get_image_count();
+        if (image_count == 0) image_count = MAX_FRAMES_IN_FLIGHT_FALLBACK;
+        m_image_available_semaphores.resize(image_count);
+        for (auto& sem : m_image_available_semaphores) {
+            sem.init(false);
+        }
+        m_scene_renderer->set_frames_in_flight(image_count);
     } else {
         LOG_INFO("Runtime", "Running in Headless Dedicated Simulation / Server mode (No Window / No GPU)");
         m_presenter = std::make_unique<engine::rhi::HeadlessPresenter>();
@@ -234,12 +233,10 @@ void RuntimeApp::step() {
         return;
     }
 
-    // 3. Vulkan Swapchain Acquisition & Frame Rendering
-    m_in_flight_fences[m_current_frame].wait();
-
+    // 3. Vulkan Swapchain Acquisition
     uint32_t image_index = 0;
     VkResult acquire_res = m_presenter->acquire_next_image(
-        m_image_available_semaphores[m_current_frame].get_handle(),
+        m_image_available_semaphores[m_current_frame % m_image_available_semaphores.size()].get_handle(),
         VK_NULL_HANDLE,
         image_index
     );
@@ -247,110 +244,69 @@ void RuntimeApp::step() {
     if (acquire_res == VK_ERROR_OUT_OF_DATE_KHR || acquire_res == VK_SUBOPTIMAL_KHR) {
         if (m_window.get_width() > 0 && m_window.get_height() > 0) {
             m_presenter->resize(m_window.get_width(), m_window.get_height());
+
+            // The aborted acquire may have left this slot's semaphore signaled
+            // (SUBOPTIMAL still signals), and the new swapchain may report a
+            // different image count. Recreate acquire semaphores and re-sync
+            // the renderer's slot count (resize() drains the queue first).
+            uint32_t image_count = m_presenter->get_image_count();
+            if (image_count == 0) image_count = MAX_FRAMES_IN_FLIGHT_FALLBACK;
+            for (auto& sem : m_image_available_semaphores) sem.destroy();
+            m_image_available_semaphores.resize(image_count);
+            for (auto& sem : m_image_available_semaphores) sem.init(false);
+            m_scene_renderer->set_frames_in_flight(image_count);
         }
         return;
     }
 
-    m_in_flight_fences[m_current_frame].reset();
-
-    // 4. Render Scene with RenderGraph
-    m_render_graph.reset();
-
-    engine::renderer::RGTextureHandle swapchain_rg = m_render_graph.import_texture(
-        "SwapchainOutput",
-        m_presenter->get_image(image_index),
-        m_presenter->get_image_view(image_index),
-        m_presenter->get_width(),
-        m_presenter->get_height(),
-        static_cast<engine::rhi::Format>(m_presenter->get_format()),
-        VK_IMAGE_LAYOUT_UNDEFINED
-    );
-
+    // 4. Build the frame camera from the primary scene camera
     auto& scene = get_scene();
-    engine::renderer::RenderCamera camera{};
-    camera.view_proj = engine::core::Mat4::identity();
-    camera.position = engine::core::Vec3(0.0f, 0.0f, 0.0f);
+    const float aspect = (m_presenter->get_width() > 0 && m_presenter->get_height() > 0)
+        ? static_cast<float>(m_presenter->get_width()) / static_cast<float>(m_presenter->get_height())
+        : 16.0f / 9.0f;
 
-    // Find primary camera in scene
-    scene.get_world().query_builder<const engine::scene::CameraComponent, const engine::scene::TransformComponent>()
+    engine::renderer::Camera camera{};
+    camera.view_proj = engine::core::Mat4::identity();
+
+    scene.get_world().query_builder<const engine::scene::CameraComponent, const engine::scene::WorldTransformComponent>()
         .build()
-        .each([&](flecs::entity e, const engine::scene::CameraComponent& cam, const engine::scene::TransformComponent& t) {
+        .each([&](flecs::entity, const engine::scene::CameraComponent& cam, const engine::scene::WorldTransformComponent& wt) {
             if (cam.is_primary) {
-                float aspect = m_presenter->get_width() > 0 && m_presenter->get_height() > 0
-                    ? static_cast<float>(m_presenter->get_width()) / static_cast<float>(m_presenter->get_height())
-                    : 16.0f / 9.0f;
-                camera.proj = cam.get_projection_matrix(aspect);
-                engine::core::Vec3 fwd = t.rotation.rotate(engine::core::Vec3(0.0f, 0.0f, 1.0f));
-                engine::core::Vec3 up = t.rotation.rotate(engine::core::Vec3(0.0f, 1.0f, 0.0f));
-                camera.view = engine::core::Mat4::look_at(t.position, t.position + fwd, up);
-                camera.view_proj = camera.proj * camera.view;
-                camera.position = t.position;
-                camera.frustum = engine::core::Frustum::from_view_projection(camera.view_proj);
+                camera = engine::renderer::Camera::from_components(cam, wt, aspect);
             }
         });
 
-    engine::renderer::GraphicsSettings settings{};
-    engine::renderer::SceneRenderer::instance().setup_render_pipeline(
-        m_render_graph,
-        scene,
-        camera,
-        settings,
-        swapchain_rg,
-        m_presenter->get_width(),
-        m_presenter->get_height()
-    );
-
-    // Pass 2: Present Transition Pass
-    m_render_graph.add_pass(
-        "PresentTransitionPass",
-        [&](engine::renderer::RenderPassBuilder& builder) {
-            builder.read_texture(swapchain_rg, engine::renderer::RGResourceAccess::Present);
-        },
-        [](engine::renderer::RenderPassContext&) {}
-    );
-
-    // Execute RenderGraph
-    auto& cmd = m_cmd_buffers[m_current_frame];
-    cmd.reset();
-    cmd.begin();
+    // 5. Hand the acquired swapchain image to the open pipeline host
+    engine::rhi::RHIImageHandle target{};
+    target.image = m_presenter->get_image(image_index);
+    target.image_view = m_presenter->get_image_view(image_index);
+    target.format = static_cast<engine::rhi::Format>(m_presenter->get_format());
+    target.width = m_presenter->get_width();
+    target.height = m_presenter->get_height();
+    target.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+    target.acquire_semaphore = m_image_available_semaphores[m_current_frame % m_image_available_semaphores.size()].get_handle();
 
     m_kernel->tick(engine::core::ExecutionPhase::Render, dt);
 
-    m_render_graph.compile();
-    m_render_graph.execute(cmd);
+    m_scene_renderer->set_delta_time(dt);
+    m_scene_renderer->render(scene, camera, target);
 
-    cmd.end();
-
-    // 5. Submit Command Buffer
-    VkSubmitInfo submit_info{};
-    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-
-    VkSemaphore wait_semaphores[] = { m_image_available_semaphores[m_current_frame].get_handle() };
-    VkPipelineStageFlags wait_stages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
-    submit_info.waitSemaphoreCount = 1;
-    submit_info.pWaitSemaphores = wait_semaphores;
-    submit_info.pWaitDstStageMask = wait_stages;
-
-    VkCommandBuffer raw_cmd = cmd.get_handle();
-    submit_info.commandBufferCount = 1;
-    submit_info.pCommandBuffers = &raw_cmd;
-
-    VkSemaphore signal_semaphores[] = { m_render_finished_semaphores[image_index].get_handle() };
-    submit_info.signalSemaphoreCount = 1;
-    submit_info.pSignalSemaphores = signal_semaphores;
-
-    vkQueueSubmit(engine::rhi::RhiContext::instance().get_graphics_queue(), 1, &submit_info, m_in_flight_fences[m_current_frame].get_handle());
-
-    // 6. Present Frame
+    // 6. Present Frame (waits on the renderer's frame-complete semaphore)
     m_presenter->present(
         engine::rhi::RhiContext::instance().get_graphics_queue(),
-        m_render_finished_semaphores[image_index].get_handle(),
+        m_scene_renderer->get_render_finished_semaphore(),
         image_index
     );
 
+    // Drain the queue through the present: a present's wait semaphore is not
+    // guaranteed released (and the slot safe to re-signal) until the present
+    // queue operation completes. Without this, a fast CPU loop re-signals a
+    // slot before the swapchain retires the present waiting on it.
+    vkQueueWaitIdle(engine::rhi::RhiContext::instance().get_graphics_queue());
+
     m_kernel->tick(engine::core::ExecutionPhase::Present, dt);
 
-    m_current_frame = (m_current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
+    m_current_frame = (m_current_frame + 1) % m_image_available_semaphores.size();
     m_rendered_frames++;
 }
 
@@ -370,21 +326,13 @@ void RuntimeApp::shutdown() {
 
     if (!m_desc.headless) {
         engine::rhi::RhiContext::instance().wait_idle();
-        m_render_graph.destroy();
-        engine::renderer::SceneRenderer::instance().shutdown();
 
-        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-            m_cmd_buffers[i].destroy(m_cmd_pool.get_handle());
-            m_in_flight_fences[i].destroy();
-            m_image_available_semaphores[i].destroy();
-        }
+        // Destroy the pipeline host BEFORE the RHI shuts down.
+        m_scene_renderer.reset();
 
-        for (auto& sem : m_render_finished_semaphores) {
+        for (auto& sem : m_image_available_semaphores) {
             sem.destroy();
         }
-        m_render_finished_semaphores.clear();
-
-        m_cmd_pool.destroy();
 
         if (m_presenter) {
             m_presenter->shutdown();

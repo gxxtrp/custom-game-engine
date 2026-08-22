@@ -8,9 +8,9 @@
 #include "engine/rhi/viewport_presenter.h"
 #include "engine/rhi/window_swapchain_presenter.h"
 #include "engine/rhi/headless_presenter.h"
-#include "engine/rhi/rhi_command_buffer.h"
 #include "engine/rhi/rhi_sync.h"
-#include "engine/renderer/render_graph.h"
+#include "engine/rhi/rhi_image_handle.h"
+#include "engine/renderer/camera.h"
 #include "engine/renderer/scene_renderer.h"
 #include <string>
 #include <vector>
@@ -48,15 +48,13 @@ private:
     engine::core::Window m_window;
     std::unique_ptr<engine::rhi::IViewportPresenter> m_presenter;
     std::unique_ptr<engine::core::EngineKernel> m_kernel;
+    // Open pipeline host: owns the stage-ordered feature registry, the internal
+    // RenderGraph, frame command buffer, fence, and render-finished semaphore.
+    std::unique_ptr<engine::renderer::SceneRenderer> m_scene_renderer;
 
-    static constexpr size_t MAX_FRAMES_IN_FLIGHT = 2;
-    engine::rhi::RhiCommandPool m_cmd_pool;
-    engine::rhi::RhiCommandBuffer m_cmd_buffers[MAX_FRAMES_IN_FLIGHT];
-    engine::rhi::RhiFence m_in_flight_fences[MAX_FRAMES_IN_FLIGHT];
-    engine::rhi::RhiSemaphore m_image_available_semaphores[MAX_FRAMES_IN_FLIGHT];
-    std::vector<engine::rhi::RhiSemaphore> m_render_finished_semaphores;
+    static constexpr size_t MAX_FRAMES_IN_FLIGHT_FALLBACK = 3;
+    std::vector<engine::rhi::RhiSemaphore> m_image_available_semaphores;
 
-    engine::renderer::RenderGraph m_render_graph;
     engine::core::FrameTimer m_timer;
 
     uint32_t m_current_frame{0};

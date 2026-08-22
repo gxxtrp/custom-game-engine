@@ -114,16 +114,29 @@ bool RhiGraphicsPipeline::init(const GraphicsPipelineDesc& desc) {
 
     // Color Blend
     std::vector<VkPipelineColorBlendAttachmentState> color_blend_attachments;
+    color_blend_attachments.reserve(desc.color_formats.size());
     for (size_t i = 0; i < desc.color_formats.size(); ++i) {
         VkPipelineColorBlendAttachmentState color_blend_attachment{};
         color_blend_attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-        color_blend_attachment.blendEnable = desc.blend_enable ? VK_TRUE : VK_FALSE;
-        color_blend_attachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-        color_blend_attachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-        color_blend_attachment.colorBlendOp = VK_BLEND_OP_ADD;
-        color_blend_attachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-        color_blend_attachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-        color_blend_attachment.alphaBlendOp = VK_BLEND_OP_ADD;
+
+        if (i < desc.blend_states.size()) {
+            const auto& bs = desc.blend_states[i];
+            color_blend_attachment.blendEnable = bs.enable ? VK_TRUE : VK_FALSE;
+            color_blend_attachment.srcColorBlendFactor = bs.src_color;
+            color_blend_attachment.dstColorBlendFactor = bs.dst_color;
+            color_blend_attachment.colorBlendOp = bs.color_op;
+            color_blend_attachment.srcAlphaBlendFactor = bs.src_alpha;
+            color_blend_attachment.dstAlphaBlendFactor = bs.dst_alpha;
+            color_blend_attachment.alphaBlendOp = bs.alpha_op;
+        } else {
+            color_blend_attachment.blendEnable = desc.blend_enable ? VK_TRUE : VK_FALSE;
+            color_blend_attachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+            color_blend_attachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+            color_blend_attachment.colorBlendOp = VK_BLEND_OP_ADD;
+            color_blend_attachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+            color_blend_attachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+            color_blend_attachment.alphaBlendOp = VK_BLEND_OP_ADD;
+        }
         color_blend_attachments.push_back(color_blend_attachment);
     }
 
@@ -198,6 +211,68 @@ void RhiGraphicsPipeline::destroy() {
         m_pipeline = VK_NULL_HANDLE;
     }
     if (m_owns_layout && m_layout != VK_NULL_HANDLE) {
+        vkDestroyPipelineLayout(device, m_layout, nullptr);
+        m_layout = VK_NULL_HANDLE;
+    }
+}
+
+RhiComputePipeline::~RhiComputePipeline() {
+    destroy();
+}
+
+bool RhiComputePipeline::init(const ComputePipelineDesc& desc) {
+    VkDevice device = RhiContext::instance().get_device();
+    if (device == VK_NULL_HANDLE) return false;
+
+    if (!desc.compute_shader || desc.compute_shader->get_handle() == VK_NULL_HANDLE) {
+        LOG_FATAL("RHI", "Compute pipeline requires a valid compute shader module");
+        return false;
+    }
+
+    VkPipelineShaderStageCreateInfo stage_info{};
+    stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+    stage_info.module = desc.compute_shader->get_handle();
+    stage_info.pName = "main";
+
+    VkPipelineLayoutCreateInfo layout_info{};
+    layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    layout_info.setLayoutCount = static_cast<uint32_t>(desc.descriptor_set_layouts.size());
+    layout_info.pSetLayouts = desc.descriptor_set_layouts.empty() ? nullptr : desc.descriptor_set_layouts.data();
+    layout_info.pushConstantRangeCount = static_cast<uint32_t>(desc.push_constant_ranges.size());
+    layout_info.pPushConstantRanges = desc.push_constant_ranges.empty() ? nullptr : desc.push_constant_ranges.data();
+
+    if (vkCreatePipelineLayout(device, &layout_info, nullptr, &m_layout) != VK_SUCCESS) {
+        LOG_FATAL("RHI", "Failed to create compute pipeline layout");
+        return false;
+    }
+
+    VkComputePipelineCreateInfo pipeline_info{};
+    pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    pipeline_info.stage = stage_info;
+    pipeline_info.layout = m_layout;
+
+    VkResult res = vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &m_pipeline);
+    if (res != VK_SUCCESS) {
+        LOG_FATAL("RHI", "Failed to create compute pipeline: {}", static_cast<int>(res));
+        vkDestroyPipelineLayout(device, m_layout, nullptr);
+        m_layout = VK_NULL_HANDLE;
+        return false;
+    }
+
+    LOG_INFO("RHI", "Created Vulkan Compute Pipeline");
+    return true;
+}
+
+void RhiComputePipeline::destroy() {
+    VkDevice device = RhiContext::instance().get_device();
+    if (device == VK_NULL_HANDLE) return;
+
+    if (m_pipeline != VK_NULL_HANDLE) {
+        vkDestroyPipeline(device, m_pipeline, nullptr);
+        m_pipeline = VK_NULL_HANDLE;
+    }
+    if (m_layout != VK_NULL_HANDLE) {
         vkDestroyPipelineLayout(device, m_layout, nullptr);
         m_layout = VK_NULL_HANDLE;
     }

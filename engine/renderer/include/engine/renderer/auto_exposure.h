@@ -3,6 +3,7 @@
 #include "engine/core/config.h"
 #include "engine/core/math.h"
 #include "engine/rhi/rhi_buffer.h"
+#include <vector>
 
 namespace engine::renderer {
 
@@ -37,14 +38,28 @@ public:
     static float compute_temporal_adaptation(float current_luma, float target_luma, float dt, float speed_up, float speed_down);
 
     const rhi::RhiBuffer& get_histogram_buffer() const { return m_histogram_buffer; }
+    const rhi::RhiBuffer& get_readback_buffer() const { return m_readback_buffer; }
     const rhi::RhiBuffer& get_exposure_buffer() const { return m_exposure_buffer; }
     const GPUAutoExposureData& get_data() const { return m_data; }
+
+    void set_target_luminance(float target) { m_data.target_luminance = target; }
+    float get_exposure() const { return m_data.exposure; }
+
+    // Copies the GPU histogram into the host-visible readback buffer and maps it
+    // into `out_bins` (HISTOGRAM_BINS entries). Call after the frame fence is waited.
+    bool readback_histogram(std::vector<uint32_t>& out_bins);
+
+    // CPU-side weighted average of the log-luminance histogram.
+    static float compute_average_luminance(const std::vector<uint32_t>& bins,
+                                           float min_log_luma = -8.0f,
+                                           float max_log_luma = 4.0f);
 
 private:
     AutoExposureParams m_params{};
     GPUAutoExposureData m_data{};
 
     rhi::RhiBuffer m_histogram_buffer;
+    rhi::RhiBuffer m_readback_buffer;
     rhi::RhiBuffer m_exposure_buffer;
 };
 

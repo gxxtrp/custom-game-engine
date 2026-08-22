@@ -1,0 +1,7 @@
+add_executable(renderer_feature_tests tests_render_feature.cpp)
+
+target_link_libraries(renderer_feature_tests PRIVATE engine_renderer)
+
+engine_target_compile_options(renderer_feature_tests)
+
+add_test(NAME renderer_feature_tests COMMAND renderer_feature_tests)
