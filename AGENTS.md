@@ -6,7 +6,7 @@ These rules are mandatory constraints for all AI agents and developers working o
 
 ## 0. DO NOT TOUCH GIT
 * **do not run any git command**
-* **do not touch git folder**
+* **do not touch .git folder**
 
 ---
 
