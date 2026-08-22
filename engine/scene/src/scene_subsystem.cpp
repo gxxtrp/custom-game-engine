@@ -26,7 +26,7 @@ void SceneSubsystem::tick(core::EngineContext& context, core::ExecutionPhase pha
     if (phase == core::ExecutionPhase::Simulation) {
         m_active_scene.update(dt);
     } else if (phase == core::ExecutionPhase::PostSimulation) {
-        // Hierarchy / transform synchronization if needed
+        m_active_scene.update_transforms();
     }
 }
 

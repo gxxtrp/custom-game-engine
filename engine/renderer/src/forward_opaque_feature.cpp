@@ -40,8 +40,8 @@ bool ForwardOpaqueFeature::ensure_pipeline(VkDescriptorSetLayout frame_set_layou
     desc.push_constant_ranges = { pc_range };
 
     desc.depth_test_enable = true;
-    desc.depth_write_enable = false; // depth prepass owns the depth buffer
-    desc.depth_compare_op = VK_COMPARE_OP_EQUAL;
+    desc.depth_write_enable = true;
+    desc.depth_compare_op = VK_COMPARE_OP_LESS_OR_EQUAL;
     desc.cull_mode = VK_CULL_MODE_NONE;
     desc.front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     desc.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;

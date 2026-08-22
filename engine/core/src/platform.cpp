@@ -285,9 +285,20 @@ void Clock::sleep_ms(uint32_t ms) {
 FrameTimer::FrameTimer()
     : m_last_time(Clock::get_time_seconds()), m_fps_timer(m_last_time) {}
 
+void FrameTimer::reset() {
+    m_last_time = Clock::get_time_seconds();
+    m_delta_time = 0.0f;
+    m_total_time = 0.0f;
+    m_frame_count = 0;
+    m_fps = 0;
+    m_fps_accumulator = 0;
+    m_fps_timer = m_last_time;
+}
+
 void FrameTimer::tick() {
     double current_time = Clock::get_time_seconds();
-    m_delta_time = static_cast<float>(current_time - m_last_time);
+    float raw_dt = static_cast<float>(current_time - m_last_time);
+    m_delta_time = std::min(raw_dt, 0.05f); // Max 50ms (20 FPS floor) per step to prevent physics tunneling
     m_last_time = current_time;
     m_total_time += m_delta_time;
     m_frame_count++;

@@ -30,7 +30,7 @@ bool DepthPrePassFeature::ensure_pipeline(VkDescriptorSetLayout frame_set_layout
     desc.depth_format = rhi::Format::D32_SFLOAT;
 
     desc.vertex_bindings = { MeshVertex::get_binding_description() };
-    desc.vertex_attributes = MeshVertex::get_attribute_descriptions();
+    desc.vertex_attributes = { MeshVertex::get_attribute_descriptions()[0] };
 
     // Set 0: FrameUniforms UBO (view_proj / prev_view_proj) — shared frame layout.
     if (frame_set_layout != VK_NULL_HANDLE) {

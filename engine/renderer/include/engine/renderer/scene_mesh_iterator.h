@@ -56,7 +56,10 @@ void for_each_mesh_draw(const scene::Scene& scene,
                 }
             }
 
-            std::shared_ptr<Mesh> mesh = meshes.resolve(mr.mesh_uuid, e.name().c_str());
+            std::string_view entity_name = e.has<scene::TagComponent>()
+                ? std::string_view(e.get<scene::TagComponent>().name)
+                : std::string_view(e.name().c_str() ? e.name().c_str() : "");
+            std::shared_ptr<Mesh> mesh = meshes.resolve(mr.mesh_uuid, entity_name);
             if (!mesh || mesh->get_indices().empty()) return;
             // Lazily upload procedural/imported meshes that arrived after GPU init.
             if (!mesh->is_gpu_uploaded() && !mesh->upload_to_gpu()) return;

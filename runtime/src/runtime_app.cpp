@@ -160,6 +160,10 @@ bool RuntimeApp::init(const RuntimeAppDesc& desc) {
     m_initialized = true;
     m_running = true;
 
+    // Reset frame timer after heavy initialization (pipeline compile, Vulkan init, map load)
+    // so frame 0 delta_time starts clean at ~0 instead of inheriting startup latency.
+    m_timer.reset();
+
     LOG_INFO("Runtime", "Modern Game Engine Runtime Initialized Successfully! Running game '{}'", proj.name);
     return true;
 }

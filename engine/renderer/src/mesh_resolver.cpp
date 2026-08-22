@@ -17,12 +17,16 @@ void MeshResolver::register_primitive(std::string name, std::shared_ptr<Mesh> me
 }
 
 std::shared_ptr<Mesh> MeshResolver::get_primitive(std::string_view name) const {
-    if (name.find("Sphere") != std::string_view::npos || name.find("sphere") != std::string_view::npos) {
+    if (name.find("Sphere") != std::string_view::npos || name.find("sphere") != std::string_view::npos || name.find("Ball") != std::string_view::npos || name.find("ball") != std::string_view::npos) {
         auto it = m_primitives.find("Sphere");
         return (it != m_primitives.end()) ? it->second : nullptr;
     }
     if (name.find("Plane") != std::string_view::npos || name.find("plane") != std::string_view::npos || name.find("Ground") != std::string_view::npos) {
         auto it = m_primitives.find("Plane");
+        return (it != m_primitives.end()) ? it->second : nullptr;
+    }
+    if (name.find("Cube") != std::string_view::npos || name.find("cube") != std::string_view::npos || name.find("Box") != std::string_view::npos || name.find("box") != std::string_view::npos) {
+        auto it = m_primitives.find("Cube");
         return (it != m_primitives.end()) ? it->second : nullptr;
     }
     auto it = m_primitives.find("Cube");

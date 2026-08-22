@@ -177,6 +177,7 @@ class FrameTimer {
 public:
     FrameTimer();
     void tick();
+    void reset();
 
     float delta_time() const { return m_delta_time; }
     float total_time() const { return m_total_time; }
